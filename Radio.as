@@ -2,6 +2,11 @@
 // - hide menu if vote menu opens
 // - more console commands
 // - search for songs
+// - kick inactive DJs (no song for long time)
+// - cant exit channel menu
+// - cant see who queued for 2nd song
+// - messages are too spammy ("is now the dj spam")
+// - is not the dj message not shown
 
 const string SONG_FILE_PATH = "scripts/plugins/Radio/songs.txt";
 
@@ -218,6 +223,7 @@ void PluginInit()
 	loadSongs();
 	
 	g_Scheduler.SetInterval("radioThink", 0.5f, -1);
+	//g_Scheduler.SetInterval("radioResumeHack", 0.1f, -1);
 }
 
 void MapInit() {
@@ -230,6 +236,7 @@ void MapInit() {
 	{
 		PlayerState@ state = cast< PlayerState@ >(g_player_states[states[i]]);
 		state.lastInviteTime.clear();
+		state.lastRequest = 0;
 		state.keepHudOpen = ""; // prevent overflows while parsing game info
 	}
 }
@@ -457,7 +464,7 @@ void radioThink() {
 			g_channels[i].shouldSkipSong = false;
 			
 			if (g_channels[i].queue.size() > 0) {
-				channelPrint(i, "Now playing: " + g_channels[i].queue[0].getName() + "\n");
+				channelPrint(i, "Now playing: " + g_channels[i].queue[0].getName());
 				channelPlay(i, g_channels[i].queue[0].path);
 			}
 		}
@@ -472,6 +479,25 @@ void radioThink() {
 		}
 		
 		PlayerState@ state = getPlayerState(plr);
+		
+		if (state.keepHudOpen.Length() > 0) {
+			g_Scheduler.SetTimeout(state.keepHudOpen, 0.0f, EHandle(plr));
+		}
+	}
+}
+
+void radioResumeHack() {	
+	for ( int i = 1; i <= g_Engine.maxClients; i++ )
+	{
+		CBasePlayer@ plr = g_PlayerFuncs.FindPlayerByIndex(i);
+		
+		if (plr is null or !plr.IsConnected()) {
+			continue;
+		}
+		
+		PlayerState@ state = getPlayerState(plr);
+		
+		clientCommand(plr, "cd resume");
 		
 		if (state.keepHudOpen.Length() > 0) {
 			g_Scheduler.SetTimeout(state.keepHudOpen, 0.0f, EHandle(plr));
@@ -700,7 +726,7 @@ void radioMenuCallback(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const 
 		if (g_channels[state.channel].queue.size() > 0) {
 			Song@ song = g_channels[state.channel].queue[0];
 			clientCommand(plr, getMp3PlayCommand(song.path));
-			channelPrint(state.channel, "Now playing: " + song.getName());
+			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "Now playing: " + song.getName());
 			state.tuneTime = DateTime();
 		} else {
 			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] There is no music playing on " + g_channels[state.channel].name + "\n");
@@ -753,7 +779,7 @@ void openRadioMenu(EHandle h_plr) {
 	
 	int eidx = plr.entindex();
 	PlayerState@ state = getPlayerState(plr);
-	Channel@ chan = g_channels[state.channel];
+	Channel@ chan = g_channels[state.channel]; // TODO: invalid index somehow
 	
 	state.keepHudOpen = "openRadioMenu";
 	
@@ -816,7 +842,7 @@ void openRadioMenu(EHandle h_plr) {
 	g_menus[eidx].AddItem(label + "\\d", any("exit"));
 	
 	g_menus[eidx].Register();
-	g_menus[eidx].Open(2, 0, plr);
+	g_menus[eidx].Open(1, 0, plr);
 }
 
 void openChannelMenu(EHandle h_plr) {
@@ -854,7 +880,7 @@ void openChannelMenu(EHandle h_plr) {
 	}
 	
 	g_menus[eidx].Register();
-	g_menus[eidx].Open(0, 0, plr);
+	g_menus[eidx].Open(1, 0, plr);
 }
 
 string formatTime(int totalSeconds) {
@@ -1037,7 +1063,6 @@ void openHelpMenu(EHandle h_plr)
 	g_menus[eidx].Open(0, 0, plr);
 }
 
-
 bool doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 	bool isAdmin = g_PlayerFuncs.AdminLevel(plr) >= ADMIN_YES;
 	PlayerState@ state = getPlayerState(plr);
@@ -1064,7 +1089,7 @@ HookReturnCode ClientSay( SayParameters@ pParams ) {
 	if (doCommand(plr, args, false))
 	{
 		pParams.ShouldHide = true;
-		return HOOK_HANDLED;
+		return HOOK_CONTINUE;
 	}
 	return HOOK_CONTINUE;
 }
