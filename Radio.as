@@ -124,6 +124,7 @@ void PluginInit() {
 	g_Hooks.RegisterHook(Hooks::Player::ClientPutInServer, @ClientJoin);
 	g_Hooks.RegisterHook(Hooks::Player::ClientDisconnect, @ClientLeave);
 	g_Hooks.RegisterHook(Hooks::Player::ClientSay, @ClientSay);
+	g_Hooks.RegisterHook(Hooks::Game::MapChange, @MapChange);
 	
 	@g_rootPath = CCVar("rootPath", "mp3/radio/", "radio music root folder", ConCommandFlag::AdminOnly);
 	@g_musicPackUpdateTime = CCVar("musicPackUpdateTime", "????-??-??", "music pack last updated time", ConCommandFlag::AdminOnly);
@@ -176,6 +177,26 @@ void MapInit() {
 	}
 }
 
+HookReturnCode MapChange() {
+	for ( int i = 1; i <= g_Engine.maxClients; i++ )
+	{
+		CBasePlayer@ plr = g_PlayerFuncs.FindPlayerByIndex(i);
+		
+		if (plr is null or !plr.IsConnected()) {
+			continue;
+		}
+
+		PlayerState@ state = getPlayerState(plr);
+		if (state.channel >= 0) {
+			// This prevents music stopping during the map change.
+			// Possibly not nice to do this. Someone might have customized the setting for some reason.
+			clientCommand(plr, "mp3fadetime 999999");
+		}
+	}
+
+	return HOOK_CONTINUE;
+}
+
 HookReturnCode ClientJoin(CBasePlayer@ plr) {
 	PlayerState@ state = getPlayerState(plr);
 	string id = getPlayerUniqueId(plr);
@@ -192,6 +213,10 @@ HookReturnCode ClientJoin(CBasePlayer@ plr) {
 		
 		g_level_changers[id] = true;
 	}
+	
+	// always doing this in case someone left during a level change, preventing the value from resetting
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "[Radio] Your 'mp3fadetime' setting was reset to 2.\n");
+	clientCommand(plr, "mp3fadetime 2");
 	
 	return HOOK_CONTINUE;
 }
@@ -632,7 +657,7 @@ void callbackMenuHelp(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const C
 		if (chan.queue.size() > 0) {
 			Song@ song = chan.queue[0];
 			clientCommand(plr, song.getMp3PlayCommand());
-			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "Now playing: " + song.getName());
+			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "Now playing: " + song.getName() + "\n");
 			state.tuneTime = DateTime();
 		} else {
 			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] There is no music playing on " + chan.name + "\n");
