@@ -2,7 +2,7 @@ from mutagen.mp3 import MP3
 import mutagen
 import os
 
-root_dir = '../../../../svencoop_addon/mp3/'
+root_dir = '../../../../svencoop_addon/mp3/radio_twlz/'
 songlist = open("songs.txt", "w")
 
 for root, folders, files in os.walk(root_dir):

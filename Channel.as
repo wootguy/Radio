@@ -6,7 +6,6 @@ class Channel {
 	string currentDj; // steam id
 	DateTime startTime; // time last song was started
 	bool shouldSkipSong = false;
-	int stopResumeHack = 0; // don't send "cd resume" commands during music transitions or else music fails to load
 	
 	void think() {
 		bool isSongFinished = true;
@@ -22,18 +21,21 @@ class Channel {
 		}
 		
 		if (isSongFinished or shouldSkipSong) {
-			shouldSkipSong = false;
-			
 			if (queue.size() > 0) {
 				Song@ song = queue[0];
-				print("Now playing: " + song.getName());
+				string msg = "Now playing: " + song.getName();
+				if (shouldSkipSong) {
+					msg = "Song skipped. " + msg;
+				}
+				announce(msg);
 				playSong(song);
 				RelaySay(name + "|" + song.getName() + "|" + (currentDj != "" ? string(getDj().pev.netname) : "(none)"));
+			} else if (shouldSkipSong) {
+				stopMusic();
+				announce("Song stopped.");
 			}
-		}
-		
-		if (stopResumeHack > 0) {
-			stopResumeHack -= 1;
+			
+			shouldSkipSong = false;
 		}
 	}
 	
@@ -47,6 +49,10 @@ class Channel {
 		return 0;
 	}
 	
+	Song@ getSong() {
+		return queue.size() > 0 ? queue[0] : null;
+	}
+	
 	string getQueueCountString() {
 		bool queueFull = int(queue.size()) > g_maxQueue.GetInt();
 		string queueColor = queueFull ? "\\r" : "\\d";
@@ -58,12 +64,17 @@ class Channel {
 		return getPlayerByUniqueId(currentDj);
 	}
 	
-	bool canDj(CBasePlayer@ plr) {
+	bool isDjReserved() {
 		CBasePlayer@ dj = getDj();
-		return dj is null or dj.entindex() == plr.entindex();
+		return dj is null and currentDj.Length() > 0 and g_Engine.time < g_djReserveTime.GetInt();
 	}
 	
-	void print(string msg, CBasePlayer@ exclude=null) {
+	bool canDj(CBasePlayer@ plr) {
+		CBasePlayer@ dj = getDj();
+		return (dj is null and !isDjReserved()) or (dj !is null and dj.entindex() == plr.entindex());
+	}
+	
+	void announce(string msg, CBasePlayer@ exclude=null) {
 		array<CBasePlayer@> listeners = getChannelListeners();
 		
 		for (uint i = 0; i < listeners.size(); i++) {
@@ -73,9 +84,13 @@ class Channel {
 		}
 	}
 	
-	void playSong(Song@ song) {	
+	void playSong(Song@ song) {
 		listenerCommand(song.getMp3PlayCommand());
 		startTime = DateTime();
+	}
+	
+	void stopMusic() {
+		listenerCommand("mp3 stop");
 	}
 	
 	bool queueSong(CBasePlayer@ plr, Song@ song) {
@@ -90,17 +105,16 @@ class Channel {
 			playSong(song);
 			
 			if (currentDj.Length() == 0) {
-				print("" + plr.pev.netname + " played: " + song.getName());
+				announce("" + plr.pev.netname + " played: " + song.getName());
 			} else {
-				print("Now playing: " + song.getName());
+				announce("Now playing: " + song.getName());
 			}
 			
 			RelaySay(name + "|" + song.getName() + "|" + (currentDj != "" ? string(getDj().pev.netname) : "(none)"));
 		} else {
-			print("" + plr.pev.netname + " queued: " + song.getName());
+			announce("" + plr.pev.netname + " queued: " + song.getName());
 		}
 
-		stopResumeHack = 2;
 		queue.insertLast(song);
 		
 		return true;
