@@ -13,7 +13,6 @@
 // - invite with text message instead of menu
 // - show new joiners how to reopen the menu if invited
 // - prevent map music playing if radio is on
-// - show who's listening
 
 const string SONG_FILE_PATH = "scripts/plugins/Radio/songs.txt";
 
@@ -1033,7 +1032,8 @@ bool doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 			} else {
 				openMenuChannelSelect(EHandle(plr));
 			}
-		} else if (args.ArgC() > 1 and args[1] == "hud") {
+		}
+		else if (args.ArgC() > 1 and args[1] == "hud") {
 			state.showHud = !state.showHud;
 			
 			if (args.ArgC() > 2) {
@@ -1041,6 +1041,34 @@ bool doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 			}
 			
 			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] HUD " + (state.showHud ? "enabled" : "disabled") + ".\n");
+		}
+		else if (args.ArgC() > 1 and args[1] == "list") {
+			for (uint i = 0; i < g_channels.size(); i++) {
+				Channel@ chan = g_channels[i];
+				array<CBasePlayer@> listeners = chan.getChannelListeners();
+				
+				string title = chan.name;
+				CBasePlayer@ dj = chan.getDj();
+				
+				title += dj !is null ? "  (DJ: " + dj.pev.netname + ")" : "";
+				
+				g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "\n\n" + title + "\n------------------");
+				for (uint k = 0; k < listeners.size(); k++) {
+					uint pos = (k+1);
+					string spos = pos;
+					if (pos < 10) {
+						spos = " " + spos;
+					}
+					
+					g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "\n" + spos + ") " + listeners[i].pev.netname);
+				}
+				
+				if (listeners.size() == 0) {
+					g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "\n(empty)");
+				}
+			}
+			
+			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "\n\n");
 		}
 		
 		return true;
