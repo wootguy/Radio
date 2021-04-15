@@ -10,6 +10,9 @@
 // - kick inactive DJs (no song for long time)
 // - cant exit channel menu
 // - messages are too spammy ("is now the dj spam")
+// - invite with text message instead of menu
+// - show new joiners how to reopen the menu if invited
+// - prevent map music playing if radio is on
 
 const string SONG_FILE_PATH = "scripts/plugins/Radio/songs.txt";
 
@@ -50,6 +53,7 @@ class PlayerState {
 	DateTime tuneTime; // last time player chose a channel (for displaying desync info)
 	dictionary lastInviteTime; // for invite cooldowns per player and for \everyone
 	float lastRequest; // for request cooldowns
+	bool focusHackEnabled = true;
 	
 	bool shouldInviteCooldown(CBasePlayer@ plr, string id) {
 		float inviteTime = -9999;
@@ -69,7 +73,7 @@ class PlayerState {
 			}
 			
 			int waitTime = int((g_inviteCooldown.GetInt() - delta) + 0.99f);
-			g_PlayerFuncs.SayText(plr, "[Radio] Wait " + waitTime + " seconds before inviting " + id + " again");
+			g_PlayerFuncs.SayText(plr, "[Radio] Wait " + waitTime + " seconds before inviting " + id + " again\n");
 			return true;
 		}
 		
@@ -80,7 +84,7 @@ class PlayerState {
 		float delta = g_Engine.time - lastRequest;
 		if (delta < g_requestCooldown.GetInt()) {			
 			int waitTime = int((g_inviteCooldown.GetInt() - delta) + 0.99f);
-			g_PlayerFuncs.SayText(plr, "[Radio] Wait " + waitTime + " seconds before requesting another song");
+			g_PlayerFuncs.SayText(plr, "[Radio] Wait " + waitTime + " seconds before requesting another song\n");
 			return true;
 		}
 		
@@ -166,7 +170,7 @@ void MapInit() {
 	{
 		PlayerState@ state = cast< PlayerState@ >(g_player_states[states[i]]);
 		state.lastInviteTime.clear();
-		state.lastRequest = 0;
+		state.lastRequest = -9999;
 		state.keepHudOpen = ""; // prevent overflows while parsing game info
 	}
 }
@@ -225,6 +229,30 @@ void radioThink() {
 		if (state.keepHudOpen.Length() > 0) {
 			g_Scheduler.SetTimeout(state.keepHudOpen, 0.0f, EHandle(plr));
 		}
+		/*
+		if (state.channel >= 0) {
+			Channel@ chan = g_channels[state.channel];
+			
+			HUDTextParams params;
+			params.effect = 0;
+			params.fadeinTime = 0;
+			params.fadeoutTime = 0.5f;
+			params.holdTime = 1.0f;
+			params.r1 = 255;
+			params.g1 = 255;
+			params.b1 = 255;
+			
+			params.x = -1;
+			params.y = 0;
+			params.channel = 2;
+
+			Song@ song = chan.getSong();
+			string msg = chan.name + "  (" + chan.getChannelListeners().size() + " listening)\n";
+			msg += song !is null ? song.getName() + "  " + formatTime(chan.getTimeLeft()) : "";
+			
+			g_PlayerFuncs.HudMessage(plr, params, msg);
+		}
+		*/
 	}
 }
 
@@ -241,12 +269,10 @@ void radioResumeHack() {
 		}
 		
 		PlayerState@ state = getPlayerState(plr);
-		if (state.channel >= 0) {
+		if (state.focusHackEnabled and state.channel >= 0) {
 			Channel@ chan = g_channels[state.channel];
 		
-			if (chan.stopResumeHack <= 0) {
-				clientCommand(plr, "cd resume");
-			}
+			clientCommand(plr, "cd resume");
 		}
 	}
 }
@@ -279,9 +305,9 @@ void callbackMenuRadio(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const 
 		if (state.channel >= 0) {
 			if (chan.currentDj == getPlayerUniqueId(plr)) {
 				chan.currentDj = "";
-				chan.print("" + plr.pev.netname + " tuned out and is not the DJ anymore.", plr);
+				chan.announce("" + plr.pev.netname + " tuned out and is not the DJ anymore.", plr);
 			} else {
-				chan.print("" + plr.pev.netname + " tuned out.", plr);
+				chan.announce("" + plr.pev.netname + " tuned out.", plr);
 			}
 		}
 		
@@ -307,11 +333,18 @@ void callbackMenuRadio(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const 
 			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] No song is playing.\n");
 		}
 		else {
-			chan.print("Song was skipped");
 			chan.shouldSkipSong = true;
 		}
 		
 		g_Scheduler.SetTimeout("openMenuRadio", 0.0f, EHandle(plr));
+	}
+	else if (option == "edit-queue") {
+		if (chan.queue.size() <= 1) {
+			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] The queue is empty.\n");
+			g_Scheduler.SetTimeout("openMenuRadio", 0.0f, EHandle(plr));
+			return;
+		}
+		g_Scheduler.SetTimeout("openMenuEditQueue", 0.0f, EHandle(plr), 0);
 	}
 	else if (option == "become-dj") {
 		CBasePlayer@ currentDj = chan.getDj();
@@ -320,12 +353,12 @@ void callbackMenuRadio(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const 
 			if (currentDj.entindex() != plr.entindex()) {
 				g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] " + currentDj.pev.netname + " must stop DJ'ing first.\n");
 			} else {
-				chan.print("" + currentDj.pev.netname + " is not the DJ anymore.\n");
+				chan.announce("" + currentDj.pev.netname + " is not the DJ anymore.\n");
 				chan.currentDj = "";
 			}
 		} else {
 			chan.currentDj = getPlayerUniqueId(plr);
-			chan.print("" + plr.pev.netname + " is now the DJ!");
+			chan.announce("" + plr.pev.netname + " is now the DJ!");
 		}
 		
 		g_Scheduler.SetTimeout("openMenuRadio", 0.0f, EHandle(plr));
@@ -365,9 +398,9 @@ void callbackMenuChannelSelect(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber
 		if (oldChannel >= 0) {
 			if (g_channels[oldChannel].currentDj == getPlayerUniqueId(plr)) {
 				g_channels[oldChannel].currentDj = "";
-				g_channels[oldChannel].print("" + plr.pev.netname + " tuned out and is not the DJ anymore.", plr);
+				g_channels[oldChannel].announce("" + plr.pev.netname + " tuned out and is not the DJ anymore.", plr);
 			} else {
-				g_channels[oldChannel].print("" + plr.pev.netname + " tuned out.", plr);
+				g_channels[oldChannel].announce("" + plr.pev.netname + " tuned out.", plr);
 			}
 		}
 		
@@ -377,7 +410,7 @@ void callbackMenuChannelSelect(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber
 			clientCommand(plr, "mp3 stop");
 		}
 		
-		g_channels[state.channel].print("" + plr.pev.netname + " tuned in.", plr);
+		g_channels[state.channel].announce("" + plr.pev.netname + " tuned in.", plr);
 		state.tuneTime = DateTime();
 	}
 }
@@ -416,7 +449,7 @@ void callbackMenuSong(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const C
 				if (helpPath.Length() > 0) {
 					helpPath += "/";
 				}
-				chan.print("" + plr.pev.netname + " requested: " + helpPath + song.getName());
+				chan.announce("" + plr.pev.netname + " requested: " + helpPath + song.getName());
 			}
 		}
 		else {			
@@ -427,6 +460,73 @@ void callbackMenuSong(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const C
 	}
 	else if (option == "main-menu") {		
 		g_Scheduler.SetTimeout("openMenuRadio", 0.0f, EHandle(plr));
+	}
+}
+
+void callbackMenuEditQueue(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const CTextMenuItem@ item) {
+	if (item is null or plr is null or !plr.IsConnected()) {
+		return;
+	}
+
+	PlayerState@ state = getPlayerState(plr);
+	
+	state.keepHudOpen = "";
+
+	Channel@ chan = @g_channels[state.channel];
+	bool canDj = chan.canDj(plr);
+
+	string option = "";
+	item.m_pUserData.retrieve(option);
+	
+	if (option.Find("edit-slot-") == 0) {
+		int slot = atoi(option.SubString(10));
+		
+		if (!canDj) {
+			slot = 0;
+		}
+		
+		g_Scheduler.SetTimeout("openMenuEditQueue", 0.0f, EHandle(plr), slot);
+	}
+	else if (option.Find("move-up-") == 0) {
+		int slot = atoi(option.SubString(8));
+		int newSlot = slot;
+		
+		if (slot > 1) {
+			Song@ temp = chan.queue[slot];
+			@chan.queue[slot] = @chan.queue[slot-1];
+			@chan.queue[slot-1] = @temp;
+			newSlot = slot-1;
+		}
+		
+		g_Scheduler.SetTimeout("openMenuEditQueue", 0.0f, EHandle(plr), newSlot);
+	}
+	else if (option.Find("move-down-") == 0) {
+		int slot = atoi(option.SubString(10));
+		int newSlot = slot;
+		
+		if (slot < int(chan.queue.size())-1) {
+			Song@ temp = chan.queue[slot];
+			@chan.queue[slot] = @chan.queue[slot+1];
+			@chan.queue[slot+1] = @temp;
+			newSlot = slot+1;
+		}
+		
+		g_Scheduler.SetTimeout("openMenuEditQueue", 0.0f, EHandle(plr), newSlot);
+	}
+	else if (option.Find("remove-") == 0) {
+		int slot = atoi(option.SubString(7));
+		
+		if (slot < int(chan.queue.size())) {
+			chan.queue.removeAt(slot);
+		}
+		
+		g_Scheduler.SetTimeout("openMenuEditQueue", 0.0f, EHandle(plr), 0);
+	}
+	else if (option == "main-menu") {		
+		g_Scheduler.SetTimeout("openMenuRadio", 0.0f, EHandle(plr));
+	}
+	else if (option == "edit-queue") {
+		g_Scheduler.SetTimeout("openMenuEditQueue", 0.0f, EHandle(plr), 0);
 	}
 }
 
@@ -599,18 +699,14 @@ void openMenuRadio(EHandle h_plr) {
 	g_menus[eidx].SetTitle(title);
 
 	CBasePlayer@ dj = chan.getDj();
-	bool isDjReserved = dj is null and chan.currentDj.Length() > 0 and g_Engine.time < g_djReserveTime.GetInt();
-	bool canDj = chan.canDj(plr) and !isDjReserved;
+	bool isDjReserved = chan.isDjReserved();
+	bool canDj = chan.canDj(plr);
 
 	g_menus[eidx].AddItem("\\wHelp\\y", any("help"));
 	g_menus[eidx].AddItem("\\wTurn off\\y", any("turn-off"));
 	g_menus[eidx].AddItem("\\wChange channel\\y", any("channels"));
-	
-	if (canDj) {
-		g_menus[eidx].AddItem("\\wQueue song  " + chan.getQueueCountString() + "\\y", any("add-song"));
-	} else {
-		g_menus[eidx].AddItem("\\wRequest song\\y", any("add-song"));
-	}
+	g_menus[eidx].AddItem("\\w" + (canDj ? "Queue" : "Request") + " song" + "\\y", any("add-song"));
+	g_menus[eidx].AddItem("\\w" + (canDj ? "Edit" : "View") + " queue  " + chan.getQueueCountString() + "\\y", any("edit-queue"));
 	
 	if (canDj) {
 		bool isDj = dj !is null and dj.entindex() == plr.entindex();
@@ -663,8 +759,6 @@ void openMenuChannelSelect(EHandle h_plr) {
 	int eidx = plr.entindex();
 	PlayerState@ state = getPlayerState(plr);
 	
-	state.keepHudOpen = "openMenuChannelSelect";
-	
 	@g_menus[eidx] = CTextMenu(@callbackMenuChannelSelect);
 	g_menus[eidx].SetTitle("\\yRadio Channels\n");
 	
@@ -682,7 +776,7 @@ void openMenuChannelSelect(EHandle h_plr) {
 		
 		Song@ song = chan.queue.size() > 0 ? chan.queue[0] : null;
 		label += "\n\\y      Current DJ:\\w " + (dj !is null ? string(dj.pev.netname) : "\\d(none)");
-		label += "\n\\y      Now Playing:\\w " + (song !is null ? song.getName() + " \\d" + formatTime(chan.getTimeLeft()) : "\\d(nothing)");
+		label += "\n\\y      Now Playing:\\w " + (song !is null ? song.getName() : "\\d(nothing)");
 		
 		label += "\n\\y";
 		
@@ -690,7 +784,68 @@ void openMenuChannelSelect(EHandle h_plr) {
 	}
 	
 	g_menus[eidx].Register();
-	g_menus[eidx].Open(1, 0, plr);
+	g_menus[eidx].Open(0, 0, plr);
+}
+
+void openMenuEditQueue(EHandle h_plr, int selectedSlot) {
+	CBasePlayer@ plr = cast<CBasePlayer@>(h_plr.GetEntity());
+	if (plr is null) {
+		return;
+	}
+
+	int eidx = plr.entindex();
+	PlayerState@ state = getPlayerState(plr);
+	Channel@ chan = g_channels[state.channel];
+	
+	string title = chan.canDj(plr) ? "Edit queue" : "View queue";
+	
+	@g_menus[eidx] = CTextMenu(@callbackMenuEditQueue);
+	
+	if (selectedSlot == 0) {
+		g_menus[eidx].SetTitle("\\y" + chan.name + " - " + title);
+		g_menus[eidx].AddItem("\\w..\\y", any("main-menu"));
+		
+		for (uint i = 1; i < chan.queue.size(); i++) {
+			string label = "\\w" + chan.queue[i].getName() + "\\y";
+			
+			// try to keep the menu spacing the same in both edit modes
+			if (i == chan.queue.size()-1) {
+				if (chan.queue.size() <= 3) {
+					label += "\n\n\n\n";
+				}
+				else {
+					label += "\n\n\n\n";
+					
+					if (chan.queue.size() > 1) {
+						label += "\n\n\n";
+					}
+					if (chan.queue.size() > 5) {
+						label += "\n\n";
+					}
+				}
+			}
+			
+			g_menus[eidx].AddItem(label, any("edit-slot-" + i));
+		}
+	} else {
+		string label = "\\y" + chan.name + " - " + title + "\n";
+		
+		for (uint i = 1; i < chan.queue.size(); i++) {
+			string color = int(i) == selectedSlot ? "\\r" : "\\w";
+			label += "\n" + color + "    " + chan.queue[i].getName() + "\\y";
+		}
+		
+		label += "\n\n\\yAction:";
+		
+		g_menus[eidx].SetTitle(label);
+		g_menus[eidx].AddItem("\\wCancel\\y", any("edit-queue"));
+		g_menus[eidx].AddItem("\\wMove up\\y", any("move-up-" + selectedSlot));
+		g_menus[eidx].AddItem("\\wMove down\\y", any("move-down-" + selectedSlot));
+		g_menus[eidx].AddItem("\\wRemove\\y", any("remove-" + selectedSlot));
+	}
+	
+	g_menus[eidx].Register();
+	g_menus[eidx].Open(0, 0, plr);
 }
 
 void openMenuSong(EHandle h_plr, string path, int page) {
@@ -845,7 +1000,7 @@ void openMenuHelp(EHandle h_plr) {
 	g_menus[eidx].AddItem("\\wCan't hear music?\\y", any("help-cant-hear"));
 	g_menus[eidx].AddItem("\\wSong changing too soon?\\y", any("help-desync"));
 	g_menus[eidx].AddItem("\\wTest installation\\y", any("test-install"));
-	g_menus[eidx].AddItem("\\wDownload music pack\\y", any("download-pack"));
+	g_menus[eidx].AddItem("\\rDownload music pack\\y", any("download-pack"));
 	//g_menus[eidx].AddItem("\\wRestart music\\y", any("restart-music"));
 	//g_menus[eidx].AddItem("\\wShow command help?\\y", any("help-commands"));
 	

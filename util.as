@@ -10,7 +10,9 @@ string formatTime(int totalSeconds) {
 
 void clientCommand(CBaseEntity@ plr, string cmd) {
 	NetworkMessage m(MSG_ONE, NetworkMessages::NetworkMessageType(9), plr.edict());
-		m.WriteString(cmd);
+		// surround with ; to prevent multiple commands being joined when sent in the same frame(?)
+		// this fixes music sometimes not loading/starting/stopping
+		m.WriteString(";" + cmd + ";");
 	m.End();
 }
 
