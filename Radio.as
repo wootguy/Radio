@@ -13,6 +13,7 @@
 // - invite with text message instead of menu
 // - show new joiners how to reopen the menu if invited
 // - prevent map music playing if radio is on
+// - show who's listening
 
 const string SONG_FILE_PATH = "scripts/plugins/Radio/songs.txt";
 
@@ -49,11 +50,12 @@ array<CTextMenu@> g_menus = {
 
 class PlayerState {
 	int channel = -1;
-	string keepHudOpen = ""; // value is the menu type to open
+	string keepMenuOpen = ""; // value is the menu type to open
 	DateTime tuneTime; // last time player chose a channel (for displaying desync info)
 	dictionary lastInviteTime; // for invite cooldowns per player and for \everyone
 	float lastRequest; // for request cooldowns
 	bool focusHackEnabled = true;
+	bool showHud = false;
 	
 	bool shouldInviteCooldown(CBasePlayer@ plr, string id) {
 		float inviteTime = -9999;
@@ -171,7 +173,7 @@ void MapInit() {
 		PlayerState@ state = cast< PlayerState@ >(g_player_states[states[i]]);
 		state.lastInviteTime.clear();
 		state.lastRequest = -9999;
-		state.keepHudOpen = ""; // prevent overflows while parsing game info
+		state.keepMenuOpen = ""; // prevent overflows while parsing game info
 	}
 }
 
@@ -200,7 +202,7 @@ HookReturnCode ClientLeave(CBasePlayer@ plr) {
 	
 	// TODO: this won't trigger for players who leave during level changes
 	g_level_changers.delete(getPlayerUniqueId(plr));
-	state.keepHudOpen = "";
+	state.keepMenuOpen = "";
 	
 	if (state.channel >= 0) {
 		if (g_channels[state.channel].currentDj == getPlayerUniqueId(plr)) {
@@ -226,11 +228,11 @@ void radioThink() {
 		
 		PlayerState@ state = getPlayerState(plr);
 		
-		if (state.keepHudOpen.Length() > 0) {
-			g_Scheduler.SetTimeout(state.keepHudOpen, 0.0f, EHandle(plr));
+		if (state.keepMenuOpen.Length() > 0) {
+			g_Scheduler.SetTimeout(state.keepMenuOpen, 0.0f, EHandle(plr));
 		}
-		/*
-		if (state.channel >= 0) {
+
+		if (state.showHud and state.channel >= 0) {
 			Channel@ chan = g_channels[state.channel];
 			
 			HUDTextParams params;
@@ -243,16 +245,18 @@ void radioThink() {
 			params.b1 = 255;
 			
 			params.x = -1;
-			params.y = 0;
+			params.y = 0.0001;
 			params.channel = 2;
 
 			Song@ song = chan.getSong();
-			string msg = chan.name + "  (" + chan.getChannelListeners().size() + " listening)\n";
-			msg += song !is null ? song.getName() + "  " + formatTime(chan.getTimeLeft()) : "";
+			CBasePlayer@ dj = chan.getDj();
+			string djName = dj !is null ? " - " + dj.pev.netname : "";
+			string msg = chan.name + djName + " - " + chan.getChannelListeners().size() + " listening";
+			string songStr = (song !is null) ? song.getName() + "  " + formatTime(chan.getTimeLeft()) : "";
 			
-			g_PlayerFuncs.HudMessage(plr, params, msg);
+			g_PlayerFuncs.HudMessage(plr, params, msg + "\n" + songStr);
 		}
-		*/
+
 	}
 }
 
@@ -286,7 +290,7 @@ void callbackMenuRadio(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const 
 
 	PlayerState@ state = getPlayerState(plr);
 	
-	state.keepHudOpen = "";
+	state.keepMenuOpen = "";
 
 	string option = "";
 	item.m_pUserData.retrieve(option);
@@ -378,7 +382,7 @@ void callbackMenuChannelSelect(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber
 
 	PlayerState@ state = getPlayerState(plr);
 	
-	state.keepHudOpen = "";
+	state.keepMenuOpen = "";
 
 	string option = "";
 	item.m_pUserData.retrieve(option);
@@ -422,7 +426,7 @@ void callbackMenuSong(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const C
 
 	PlayerState@ state = getPlayerState(plr);
 	
-	state.keepHudOpen = "";
+	state.keepMenuOpen = "";
 
 	Channel@ chan = @g_channels[state.channel];
 	bool canDj = chan.canDj(plr);
@@ -470,7 +474,7 @@ void callbackMenuEditQueue(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, co
 
 	PlayerState@ state = getPlayerState(plr);
 	
-	state.keepHudOpen = "";
+	state.keepMenuOpen = "";
 
 	Channel@ chan = @g_channels[state.channel];
 	bool canDj = chan.canDj(plr);
@@ -537,7 +541,7 @@ void callbackMenuInvite(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const
 
 	PlayerState@ state = getPlayerState(plr);
 	
-	state.keepHudOpen = "";
+	state.keepMenuOpen = "";
 
 	Channel@ chan = @g_channels[state.channel];
 
@@ -565,8 +569,8 @@ void callbackMenuInvite(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const
 				continue;
 			}
 			
-			g_Scheduler.SetTimeout("openMenuInviteRequest", 0.5f, EHandle(target), "" + plr.pev.netname, state.channel, targetState.keepHudOpen);
-			targetState.keepHudOpen = "";
+			g_Scheduler.SetTimeout("openMenuInviteRequest", 0.5f, EHandle(target), "" + plr.pev.netname, state.channel, targetState.keepMenuOpen);
+			targetState.keepMenuOpen = "";
 			inviteCount++;
 		}
 		
@@ -591,8 +595,8 @@ void callbackMenuInvite(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const
 		
 		if (target !is null) {
 			PlayerState@ targetState = getPlayerState(target);
-			g_Scheduler.SetTimeout("openMenuInviteRequest", 0.5f, EHandle(target), "" + plr.pev.netname, state.channel, targetState.keepHudOpen);
-			targetState.keepHudOpen = "";
+			g_Scheduler.SetTimeout("openMenuInviteRequest", 0.5f, EHandle(target), "" + plr.pev.netname, state.channel, targetState.keepMenuOpen);
+			targetState.keepMenuOpen = "";
 			
 			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] Invitation sent to " + target.pev.netname + "\n");
 			
@@ -618,7 +622,7 @@ void callbackMenuHelp(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const C
 
 	PlayerState@ state = getPlayerState(plr);
 	
-	state.keepHudOpen = "";
+	state.keepMenuOpen = "";
 
 	Channel@ chan = @g_channels[state.channel];
 
@@ -690,7 +694,7 @@ void openMenuRadio(EHandle h_plr) {
 	PlayerState@ state = getPlayerState(plr);
 	Channel@ chan = g_channels[state.channel]; // TODO: invalid index somehow
 	
-	state.keepHudOpen = "openMenuRadio";
+	state.keepMenuOpen = "openMenuRadio";
 	
 	string title = "\\y" + chan.name;
 	title += "  \\d(" + chan.getChannelListeners().size() + " listening)\\y";
@@ -1020,14 +1024,24 @@ bool doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 	PlayerState@ state = getPlayerState(plr);
 	
 	if (args.ArgC() > 0 && args[0] == ".radio") {
-		bool isEnabled = state.channel >= 0;
 	
-		if (isEnabled) {
-			openMenuRadio(EHandle(plr));
-		} else {
-			openMenuChannelSelect(EHandle(plr));
+		if (args.ArgC() == 1) {
+			bool isEnabled = state.channel >= 0;
+	
+			if (isEnabled) {
+				openMenuRadio(EHandle(plr));
+			} else {
+				openMenuChannelSelect(EHandle(plr));
+			}
+		} else if (args.ArgC() > 1 and args[1] == "hud") {
+			state.showHud = !state.showHud;
+			
+			if (args.ArgC() > 2) {
+				state.showHud = atoi(args[2]) != 0;
+			}
+			
+			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] HUD " + (state.showHud ? "enabled" : "disabled") + ".\n");
 		}
-		
 		
 		return true;
 	}
