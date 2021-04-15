@@ -13,6 +13,7 @@
 // - invite with text message instead of menu
 // - show new joiners how to reopen the menu if invited
 // - prevent map music playing if radio is on
+// - help console commands
 
 const string SONG_FILE_PATH = "scripts/plugins/Radio/songs.txt";
 
@@ -23,6 +24,8 @@ CCVar@ g_musicPackLink;
 
 CCVar@ g_inviteCooldown;
 CCVar@ g_requestCooldown;
+CCVar@ g_djSwapCooldown;
+CCVar@ g_skipSongCooldown;
 CCVar@ g_djReserveTime;
 CCVar@ g_maxQueue;
 CCVar@ g_channelCount;
@@ -53,6 +56,8 @@ class PlayerState {
 	DateTime tuneTime; // last time player chose a channel (for displaying desync info)
 	dictionary lastInviteTime; // for invite cooldowns per player and for \everyone
 	float lastRequest; // for request cooldowns
+	float lastDjToggle; // for cooldown
+	float lastSongSkip; // for cooldown
 	bool focusHackEnabled = true;
 	bool showHud = false;
 	
@@ -74,7 +79,7 @@ class PlayerState {
 			}
 			
 			int waitTime = int((g_inviteCooldown.GetInt() - delta) + 0.99f);
-			g_PlayerFuncs.SayText(plr, "[Radio] Wait " + waitTime + " seconds before inviting " + id + " again\n");
+			g_PlayerFuncs.SayText(plr, "[Radio] Wait " + waitTime + " seconds before inviting " + id + " again.\n");
 			return true;
 		}
 		
@@ -85,7 +90,29 @@ class PlayerState {
 		float delta = g_Engine.time - lastRequest;
 		if (delta < g_requestCooldown.GetInt()) {			
 			int waitTime = int((g_inviteCooldown.GetInt() - delta) + 0.99f);
-			g_PlayerFuncs.SayText(plr, "[Radio] Wait " + waitTime + " seconds before requesting another song\n");
+			g_PlayerFuncs.SayText(plr, "[Radio] Wait " + waitTime + " seconds before requesting another song.\n");
+			return true;
+		}
+		
+		return false;
+	}
+	
+	bool shouldDjToggleCooldown(CBasePlayer@ plr) {	
+		float delta = g_Engine.time - lastDjToggle;
+		if (delta < g_djSwapCooldown.GetInt()) {			
+			int waitTime = int((g_djSwapCooldown.GetInt() - delta) + 0.99f);
+			g_PlayerFuncs.SayText(plr, "[Radio] Wait " + waitTime + " seconds before toggling DJ mode again.\n");
+			return true;
+		}
+		
+		return false;
+	}
+	
+	bool shouldSongSkipCooldown(CBasePlayer@ plr) {	
+		float delta = g_Engine.time - lastSongSkip;
+		if (delta < g_skipSongCooldown.GetInt()) {			
+			int waitTime = int((g_skipSongCooldown.GetInt() - delta) + 0.99f);
+			g_PlayerFuncs.SayText(plr, "[Radio] Wait " + waitTime + " seconds before skipping another song.\n");
 			return true;
 		}
 		
@@ -133,6 +160,8 @@ void PluginInit() {
 	
 	@g_inviteCooldown = CCVar("inviteCooldown", 240, "Radio invite cooldown", ConCommandFlag::AdminOnly);
 	@g_requestCooldown = CCVar("requestCooldown", 240, "Song request cooldown", ConCommandFlag::AdminOnly);
+	@g_djSwapCooldown = CCVar("g_djSwapCooldown", 5, "DJ mode toggle cooldown", ConCommandFlag::AdminOnly);
+	@g_skipSongCooldown = CCVar("g_skipSongCooldown", 10, "DJ mode toggle cooldown", ConCommandFlag::AdminOnly);
 	@g_djReserveTime = CCVar("djReserveTime", 240, "Time to reserve DJ slots after level change", ConCommandFlag::AdminOnly);
 	@g_maxQueue = CCVar("maxQueue", 8, "Max songs that can be queued", ConCommandFlag::AdminOnly);
 	@g_channelCount = CCVar("channelCount", 4, "Number of available channels", ConCommandFlag::AdminOnly);
@@ -173,6 +202,8 @@ void MapInit() {
 		PlayerState@ state = cast< PlayerState@ >(g_player_states[states[i]]);
 		state.lastInviteTime.clear();
 		state.lastRequest = -9999;
+		state.lastDjToggle = -9999;
+		state.lastSongSkip = -9999;
 		state.keepMenuOpen = ""; // prevent overflows while parsing game info
 	}
 }
@@ -331,12 +362,7 @@ void callbackMenuRadio(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const 
 	}
 	else if (option == "turn-off") {
 		if (state.channel >= 0) {
-			if (chan.currentDj == getPlayerUniqueId(plr)) {
-				chan.currentDj = "";
-				chan.announce("" + plr.pev.netname + " tuned out and is not the DJ anymore.", plr);
-			} else {
-				chan.announce("" + plr.pev.netname + " tuned out.", plr);
-			}
+			chan.handlePlayerLeave(plr);
 		}
 		
 		state.channel = -1;
@@ -357,11 +383,17 @@ void callbackMenuRadio(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const 
 			return;
 		}
 		
+		if (state.shouldSongSkipCooldown(plr)) {
+			g_Scheduler.SetTimeout("openMenuRadio", 0.0f, EHandle(plr));
+			return;
+		}
+		
 		if (chan.queue.size() == 0) {
 			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] No song is playing.\n");
 		}
 		else {
 			chan.shouldSkipSong = true;
+			state.lastSongSkip = g_Engine.time;
 		}
 		
 		g_Scheduler.SetTimeout("openMenuRadio", 0.0f, EHandle(plr));
@@ -377,6 +409,11 @@ void callbackMenuRadio(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const 
 	else if (option == "become-dj") {
 		CBasePlayer@ currentDj = chan.getDj();
 		
+		if (state.shouldDjToggleCooldown(plr)) {
+			g_Scheduler.SetTimeout("openMenuRadio", 0.0f, EHandle(plr));
+			return;
+		}
+		
 		if (currentDj !is null) {
 			if (currentDj.entindex() != plr.entindex()) {
 				g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] " + currentDj.pev.netname + " must stop DJ'ing first.\n");
@@ -384,10 +421,12 @@ void callbackMenuRadio(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const 
 				chan.announce("" + currentDj.pev.netname + " is not the DJ anymore.\n");
 				chan.currentDj = "";
 			}
-		} else {
+		}
+		else {
 			chan.currentDj = getPlayerUniqueId(plr);
 			chan.announce("" + plr.pev.netname + " is now the DJ!");
 		}
+		state.lastDjToggle = g_Engine.time;
 		
 		g_Scheduler.SetTimeout("openMenuRadio", 0.0f, EHandle(plr));
 	}
@@ -424,12 +463,7 @@ void callbackMenuChannelSelect(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber
 		}
 		
 		if (oldChannel >= 0) {
-			if (g_channels[oldChannel].currentDj == getPlayerUniqueId(plr)) {
-				g_channels[oldChannel].currentDj = "";
-				g_channels[oldChannel].announce("" + plr.pev.netname + " tuned out and is not the DJ anymore.", plr);
-			} else {
-				g_channels[oldChannel].announce("" + plr.pev.netname + " tuned out.", plr);
-			}
+			g_channels[oldChannel].handlePlayerLeave(plr);
 		}
 		
 		if (g_channels[state.channel].queue.size() > 0) {
@@ -438,7 +472,7 @@ void callbackMenuChannelSelect(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber
 			clientCommand(plr, "mp3 stop");
 		}
 		
-		g_channels[state.channel].announce("" + plr.pev.netname + " tuned in.", plr);
+		g_channels[state.channel].announce("" + plr.pev.netname + " tuned in.", HUD_PRINTNOTIFY, plr);
 		state.tuneTime = DateTime();
 	}
 }
