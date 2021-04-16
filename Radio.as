@@ -16,7 +16,15 @@ const string SONG_FILE_PATH = "scripts/plugins/Radio/songs.txt";
 CCVar@ g_rootPath;
 CCVar@ g_musicPackUpdateTime;
 CCVar@ g_musicPackVersionCheckFile;
-CCVar@ g_musicPackLink;
+
+// different quality levels
+CCVar@ g_musicPackLink_q1;
+CCVar@ g_musicPackLink_q2;
+CCVar@ g_musicPackLink_q3;
+
+CCVar@ g_musicPackDesc_q1;
+CCVar@ g_musicPackDesc_q2;
+CCVar@ g_musicPackDesc_q3;
 
 CCVar@ g_inviteCooldown;
 CCVar@ g_requestCooldown;
@@ -153,7 +161,12 @@ void PluginInit() {
 	@g_rootPath = CCVar("rootPath", "mp3/radio/", "radio music root folder", ConCommandFlag::AdminOnly);
 	@g_musicPackUpdateTime = CCVar("musicPackUpdateTime", "????-??-??", "music pack last updated time", ConCommandFlag::AdminOnly);
 	@g_musicPackVersionCheckFile = CCVar("musicPackVersionCheckFile", "version_check/v1.mp3", "version check file (used in help menu)", ConCommandFlag::AdminOnly);
-	@g_musicPackLink = CCVar("musicPackLink", "https://asdf.com/qwerty.zip", "music pack download link", ConCommandFlag::AdminOnly);
+	@g_musicPackLink_q1 = CCVar("musicPackLink_q1", "https://asdf.com/qwerty_q1.zip", "music pack download link", ConCommandFlag::AdminOnly);
+	@g_musicPackLink_q2 = CCVar("musicPackLink_q2", "https://asdf.com/qwerty_q2.zip", "music pack download link", ConCommandFlag::AdminOnly);
+	@g_musicPackLink_q3 = CCVar("musicPackLink_q3", "https://asdf.com/qwerty_q3.zip", "music pack download link", ConCommandFlag::AdminOnly);
+	@g_musicPackDesc_q1 = CCVar("musicPackDesc_q1", "Maximum \\r(500 TB)  \\d(44 kHz Stereo, 190 kbps)", "music pack description", ConCommandFlag::AdminOnly);
+	@g_musicPackDesc_q2 = CCVar("musicPackDesc_q2", "Optimal \\r(1.0 GB)  \\d(22 kHz Mono, 80 kbps)", "music pack description", ConCommandFlag::AdminOnly);
+	@g_musicPackDesc_q3 = CCVar("musicPackDesc_q3", "Shitty  \\r(100 MB)  \\d(8 kHz Mono, 8 kbps)", "music pack description", ConCommandFlag::AdminOnly);
 	
 	@g_inviteCooldown = CCVar("inviteCooldown", 600, "Radio invite cooldown", ConCommandFlag::AdminOnly);
 	@g_requestCooldown = CCVar("requestCooldown", 300, "Song request cooldown", ConCommandFlag::AdminOnly);
@@ -707,12 +720,7 @@ void callbackMenuHelp(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const C
 		g_Scheduler.SetTimeout("openMenuHelp", 0.0f, EHandle(plr));
 	}
 	else if (option == "download-pack") {
-		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "Download link is below. You can copy it from the console.\n\n");
-		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, g_musicPackLink.GetString() + "\n\n");
-		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "Extract to Steam/Common/Sven Co-op/svencoop_downloads/\n");
-		
-		
-		g_Scheduler.SetTimeout("openMenuHelp", 0.0f, EHandle(plr));
+		g_Scheduler.SetTimeout("openMenuDownload", 0.0f, EHandle(plr));
 	}
 	else if (option == "help-cant-hear") {
 		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] Can't hear music?\n");
@@ -745,6 +753,36 @@ void callbackMenuHelp(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const C
 	}
 	else if (option == "main-menu") {		
 		g_Scheduler.SetTimeout("openMenuRadio", 0.0f, EHandle(plr));
+	}
+}
+
+void callbackMenuDownload(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const CTextMenuItem@ item) {
+	if (item is null or plr is null or !plr.IsConnected()) {
+		return;
+	}
+
+	PlayerState@ state = getPlayerState(plr);
+	
+	state.keepMenuOpen = "";
+
+	Channel@ chan = @g_channels[state.channel];
+
+	string option = "";
+	item.m_pUserData.retrieve(option);
+	
+	if (option.Find("download-") == 0) {
+		int slot = atoi(option.SubString(9));
+		
+		array<CCVar@> allLinks = {g_musicPackLink_q1, g_musicPackLink_q2, g_musicPackLink_q3};
+		
+		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "Download link is below. You can copy it from the console.\n\n");
+		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, allLinks[slot].GetString() + "\n\n");
+		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "Extract to Steam/Common/Sven Co-op/svencoop_downloads/\n");
+		
+		g_Scheduler.SetTimeout("openMenuHelp", 0.0f, EHandle(plr));
+	}
+	else if (option == "help") {		
+		g_Scheduler.SetTimeout("openMenuHelp", 0.0f, EHandle(plr));
 	}
 }
 
@@ -1083,6 +1121,35 @@ void openMenuHelp(EHandle h_plr) {
 	g_menus[eidx].Open(0, 0, plr);
 }
 
+void openMenuDownload(EHandle h_plr) {
+	CBasePlayer@ plr = cast<CBasePlayer@>(h_plr.GetEntity());
+	if (plr is null) {
+		return;
+	}
+
+	int eidx = plr.entindex();
+	PlayerState@ state = getPlayerState(plr);
+	
+	@g_menus[eidx] = CTextMenu(@callbackMenuDownload);
+	g_menus[eidx].SetTitle("\\yChoose Music Quality");
+	g_menus[eidx].AddItem("\\w..\\y", any("help"));
+	
+	array<CCVar@> allLinks = {g_musicPackLink_q1, g_musicPackLink_q2, g_musicPackLink_q3};
+	array<CCVar@> allDesc = {g_musicPackDesc_q1, g_musicPackDesc_q2, g_musicPackDesc_q3};
+	
+	for (uint i = 0; i < allLinks.size(); i++) {
+		if (allLinks[i].GetString().Length() == 0) {
+			break;
+		}
+		
+		g_menus[eidx].AddItem("\\w" + allDesc[i].GetString() + "\\y", any("download-" + i));
+	}
+	
+	g_menus[eidx].Register();
+	g_menus[eidx].Open(0, 0, plr);
+}
+
+
 
 void showConsoleHelp(CBasePlayer@ plr, bool showChatMessage) {
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '------------------------------ Radio Commands ------------------------------\n\n');
@@ -1096,8 +1163,24 @@ void showConsoleHelp(CBasePlayer@ plr, bool showChatMessage) {
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    In the past this has been abused for things like rebinding your jump button to crash the game.\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    Only disable cl_filterstuffcmd on servers you trust. Add "cl_filterstuffcmd 1" to userconfig.cfg\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    so you don\'t have to remember to turn it back on.\n\n');
-	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Music pack download (last updated ' + g_musicPackUpdateTime.GetString() + '):\n');
-	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, g_musicPackLink.GetString() + "\n");
+	
+	array<CCVar@> allLinks = {g_musicPackLink_q1, g_musicPackLink_q2, g_musicPackLink_q3};
+	array<CCVar@> allDesc = {g_musicPackDesc_q1, g_musicPackDesc_q2, g_musicPackDesc_q3};
+	
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Music pack download links:\n');
+	
+	for (uint i = 0; i < allLinks.size(); i++) {
+		if (allLinks[i].GetString().Length() == 0) {
+			break;
+		}
+		
+		string desc = allDesc[i].GetString();
+		desc = desc.Replace("\\r", "").Replace("\\w", "").Replace("\\d", "").Replace("\n", " ");
+		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "    " + desc + "\n        " + allLinks[i].GetString() + "\n\n");
+	}
+	
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Music pack last updated:\n' + g_musicPackUpdateTime.GetString() + '\n');
+
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '\n--------------------------------------------------------------------------\n');
 
 	if (showChatMessage) {
