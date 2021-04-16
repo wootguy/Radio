@@ -1,15 +1,10 @@
-1) Audacity export settings (I think this is the minimum before quality loss is obvious):
-     Bit Rate Mode = Variable
-     Quality = 65-105 kbps
-     Variable speed = Fast
-     Channel Mode = Joint Stereo
-     Project Rate (Hz) = 22050
-2) Run MP3Gain with 89.0 target volume to sync all song volumes
-3) run songlist.py
-5) rename the FAILURE version_check file (increase the version number or use a date or something)
-6) add a new SUCCESS version_check file to the music pack (same path as in step 5)
-7) update all musicPack* CVars in server.cfg
-8) music should update on level change, or you can reload the plugin if impatient.
+1) Run MP3Gain with 105.0 target volume to sync all song volumes
+2) run songlist.py
+3) run pack_songs.py (change vars inside first, namely the version check file)
+4) rename the FAILURE version_check file on the server (use same version number from previous step)
+5) Zip each pack with Store compression and upload somewhere.
+6) update all musicPack* CVars in server.cfg
+7) music should update on level change, or you can reload the plugin if impatient.
 
 How version check works:
 The server will send/precache the FAILURE file to clients who don't have the music pack.

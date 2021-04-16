@@ -164,9 +164,9 @@ void PluginInit() {
 	@g_musicPackLink_q1 = CCVar("musicPackLink_q1", "https://asdf.com/qwerty_q1.zip", "music pack download link", ConCommandFlag::AdminOnly);
 	@g_musicPackLink_q2 = CCVar("musicPackLink_q2", "https://asdf.com/qwerty_q2.zip", "music pack download link", ConCommandFlag::AdminOnly);
 	@g_musicPackLink_q3 = CCVar("musicPackLink_q3", "https://asdf.com/qwerty_q3.zip", "music pack download link", ConCommandFlag::AdminOnly);
-	@g_musicPackDesc_q1 = CCVar("musicPackDesc_q1", "Maximum \\r(500 TB)  \\d(44 kHz Stereo, 190 kbps)", "music pack description", ConCommandFlag::AdminOnly);
-	@g_musicPackDesc_q2 = CCVar("musicPackDesc_q2", "Optimal \\r(1.0 GB)  \\d(22 kHz Mono, 80 kbps)", "music pack description", ConCommandFlag::AdminOnly);
-	@g_musicPackDesc_q3 = CCVar("musicPackDesc_q3", "Shitty  \\r(100 MB)  \\d(8 kHz Mono, 8 kbps)", "music pack description", ConCommandFlag::AdminOnly);
+	@g_musicPackDesc_q1 = CCVar("musicPackDesc_q1", "Maximum \\r(500 TB)  \\d(44 kHz Stereo, 130 kbps)", "music pack description", ConCommandFlag::AdminOnly);
+	@g_musicPackDesc_q2 = CCVar("musicPackDesc_q2", "Optimal \\r(1.0 GB)  \\d(32 kHz Mono, 65 kbps)", "music pack description", ConCommandFlag::AdminOnly);
+	@g_musicPackDesc_q3 = CCVar("musicPackDesc_q3", "Shitty \\r(100 MB)  \\d(8 kHz Mono, 8 kbps)", "music pack description", ConCommandFlag::AdminOnly);
 	
 	@g_inviteCooldown = CCVar("inviteCooldown", 600, "Radio invite cooldown", ConCommandFlag::AdminOnly);
 	@g_requestCooldown = CCVar("requestCooldown", 300, "Song request cooldown", ConCommandFlag::AdminOnly);
