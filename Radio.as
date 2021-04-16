@@ -5,15 +5,11 @@
 
 // TODO:
 // - hide menu if vote menu opens
-// - more console commands
 // - search for songs
 // - kick inactive DJs (no song for long time)
-// - cant exit channel menu
-// - messages are too spammy ("is now the dj spam")
 // - invite with text message instead of menu
-// - show new joiners how to reopen the menu if invited
 // - prevent map music playing if radio is on
-// - help console commands
+// - show who else is listening/desynced with music sprites or smth
 
 const string SONG_FILE_PATH = "scripts/plugins/Radio/songs.txt";
 
@@ -58,8 +54,9 @@ class PlayerState {
 	float lastRequest; // for request cooldowns
 	float lastDjToggle; // for cooldown
 	float lastSongSkip; // for cooldown
-	bool focusHackEnabled = true;
+	bool focusHackEnabled = false;
 	bool showHud = false;
+	bool neverUsedBefore = true;
 	
 	bool shouldInviteCooldown(CBasePlayer@ plr, string id) {
 		float inviteTime = -9999;
@@ -158,13 +155,13 @@ void PluginInit() {
 	@g_musicPackVersionCheckFile = CCVar("musicPackVersionCheckFile", "version_check/v1.mp3", "version check file (used in help menu)", ConCommandFlag::AdminOnly);
 	@g_musicPackLink = CCVar("musicPackLink", "https://asdf.com/qwerty.zip", "music pack download link", ConCommandFlag::AdminOnly);
 	
-	@g_inviteCooldown = CCVar("inviteCooldown", 240, "Radio invite cooldown", ConCommandFlag::AdminOnly);
-	@g_requestCooldown = CCVar("requestCooldown", 240, "Song request cooldown", ConCommandFlag::AdminOnly);
-	@g_djSwapCooldown = CCVar("g_djSwapCooldown", 5, "DJ mode toggle cooldown", ConCommandFlag::AdminOnly);
-	@g_skipSongCooldown = CCVar("g_skipSongCooldown", 10, "DJ mode toggle cooldown", ConCommandFlag::AdminOnly);
+	@g_inviteCooldown = CCVar("inviteCooldown", 600, "Radio invite cooldown", ConCommandFlag::AdminOnly);
+	@g_requestCooldown = CCVar("requestCooldown", 300, "Song request cooldown", ConCommandFlag::AdminOnly);
+	@g_djSwapCooldown = CCVar("djSwapCooldown", 5, "DJ mode toggle cooldown", ConCommandFlag::AdminOnly);
+	@g_skipSongCooldown = CCVar("skipSongCooldown", 10, "DJ mode toggle cooldown", ConCommandFlag::AdminOnly);
 	@g_djReserveTime = CCVar("djReserveTime", 240, "Time to reserve DJ slots after level change", ConCommandFlag::AdminOnly);
 	@g_maxQueue = CCVar("maxQueue", 8, "Max songs that can be queued", ConCommandFlag::AdminOnly);
-	@g_channelCount = CCVar("channelCount", 4, "Number of available channels", ConCommandFlag::AdminOnly);
+	@g_channelCount = CCVar("channelCount", 3, "Number of available channels", ConCommandFlag::AdminOnly);
 	
 	g_channels.resize(g_channelCount.GetInt());
 	
@@ -237,7 +234,7 @@ HookReturnCode ClientJoin(CBasePlayer@ plr) {
 			if (g_channels[state.channel].queue.size() > 0) {
 				Song@ song = g_channels[state.channel].queue[0];
 				clientCommand(plr, song.getMp3PlayCommand());
-				g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "Now playing: " + song.getName() + "\n");
+				g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] Now playing: " + song.getName() + "\n");
 				state.tuneTime = DateTime();
 			}
 		}
@@ -367,7 +364,13 @@ void callbackMenuRadio(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const 
 		
 		state.channel = -1;
 		
-		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] Turned off.\n");
+		string msg = "[Radio] Turned off.";
+		if (state.neverUsedBefore) {
+			state.neverUsedBefore = false;
+			msg += " Say .radio to turn it back on.";
+		}
+		
+		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, msg + "\n");
 		clientCommand(plr, "mp3 stop");
 	}
 	else if (option == "main-menu") {		
@@ -435,6 +438,11 @@ void callbackMenuRadio(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const 
 	}
 	else if (option == "help") {
 		g_Scheduler.SetTimeout("openMenuHelp", 0.0f, EHandle(plr));
+	} else {
+		if (state.neverUsedBefore) {
+			state.neverUsedBefore = false;
+			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] Say .radio if you want to re-open the menu.\n");
+		}
 	}
 }
 
@@ -723,11 +731,11 @@ void callbackMenuHelp(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const C
 		g_Scheduler.SetTimeout("openMenuHelp", 0.0f, EHandle(plr));
 	}
 	else if (option == "help-commands") {
-		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] Command help was sent to your console.\n");
+		showConsoleHelp(plr, true);
 		g_Scheduler.SetTimeout("openMenuHelp", 0.0f, EHandle(plr));
 	}
 	else if (option == "test-install") {
-		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] You should be hearing a text-to-speech voice now. If not, increase your music volume in Options -> Audio\n");
+		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] You should be hearing a text-to-speech voice now. If not, increase music volume in Options -> Audio.\n");
 		
 		Song testSong = Song();
 		testSong.path = g_musicPackVersionCheckFile.GetString();
@@ -931,7 +939,7 @@ void openMenuSong(EHandle h_plr, string path, int page) {
 	}
 	
 	@g_menus[eidx] = CTextMenu(@callbackMenuSong);
-	g_menus[eidx].SetTitle("\\y" + chan.name + " - " + title + "\\y\n" + g_rootPath.GetString() + prefix + "    ");	
+	g_menus[eidx].SetTitle("\\y" + chan.name + " - " + title + "\\y\n/" + prefix + "    ");	
 	
 	FileNode@ node = getNodeFromPath(path);
 	
@@ -1059,15 +1067,15 @@ void openMenuHelp(EHandle h_plr) {
 	g_menus[eidx].SetTitle("\\yRadio Help");
 	
 	g_menus[eidx].AddItem("\\w..\\y", any("main-menu"));
+	g_menus[eidx].AddItem("\\rDownload music pack\\y", any("download-pack"));
 	g_menus[eidx].AddItem("\\wCan't hear music?\\y", any("help-cant-hear"));
 	g_menus[eidx].AddItem("\\wSong changing too soon?\\y", any("help-desync"));
 	g_menus[eidx].AddItem("\\wTest installation\\y", any("test-install"));
-	g_menus[eidx].AddItem("\\rDownload music pack\\y", any("download-pack"));
 	//g_menus[eidx].AddItem("\\wRestart music\\y", any("restart-music"));
-	//g_menus[eidx].AddItem("\\wShow command help?\\y", any("help-commands"));
+	g_menus[eidx].AddItem("\\wShow command help\\y", any("help-commands"));
 	
 	string label = "\\wRestart music\\y";
-	label += "\n\nMusic pack last updated:\n\\w" + g_musicPackUpdateTime.GetString() + "\\y";
+	label += "\n\nMusic pack last updated:\n\\r" + g_musicPackUpdateTime.GetString() + "\\y";
 	
 	g_menus[eidx].AddItem(label, any("restart-music"));
 	
@@ -1076,6 +1084,26 @@ void openMenuHelp(EHandle h_plr) {
 }
 
 
+void showConsoleHelp(CBasePlayer@ plr, bool showChatMessage) {
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '------------------------------ Radio Commands ------------------------------\n\n');
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Type ".radio" to toggle the radio menu.\n\n');
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Type ".radio hud" to toggle the radio HUD.\n\n');
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Type ".radio pausefix" to toggle the music-pause fix.\n');
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    This prevents the music pausing when the game window loses focus (alt+tab).\n');
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    In order for this to work you need to also set "cl_filterstuffcmd 0" in the console.\n');
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    DANGER! DANGER! YOU DO THIS AT YOUR OWN RISK!\n');
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    DISABLING FILTERSTUFF ALLOWS THE SERVER TO RUN ***ANY*** COMMAND IN YOUR CONSOLE!!1!!\n');
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    In the past this has been abused for things like rebinding your jump button to crash the game.\n');
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    Only disable cl_filterstuffcmd on servers you trust. Add "cl_filterstuffcmd 1" to userconfig.cfg\n');
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    so you don\'t have to remember to turn it back on.\n\n');
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Music pack download (last updated ' + g_musicPackUpdateTime.GetString() + '):\n');
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, g_musicPackLink.GetString() + "\n");
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '\n--------------------------------------------------------------------------\n');
+
+	if (showChatMessage) {
+		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, '[Radio] Help info sent to your console.\n');
+	}
+}
 
 bool doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 	bool isAdmin = g_PlayerFuncs.AdminLevel(plr) >= ADMIN_YES;
@@ -1087,7 +1115,12 @@ bool doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 			bool isEnabled = state.channel >= 0;
 	
 			if (isEnabled) {
-				openMenuRadio(EHandle(plr));
+				if (state.keepMenuOpen.Length() > 0) {
+					state.keepMenuOpen = "";
+				} else {
+					openMenuRadio(EHandle(plr));
+				}
+				
 			} else {
 				openMenuChannelSelect(EHandle(plr));
 			}
@@ -1100,6 +1133,14 @@ bool doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 			}
 			
 			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] HUD " + (state.showHud ? "enabled" : "disabled") + ".\n");
+		}
+		else if (args.ArgC() > 1 and args[1] == "pausefix") {
+			state.focusHackEnabled = !state.focusHackEnabled;
+			
+			if (args.ArgC() > 2) {
+				state.focusHackEnabled = atoi(args[2]) != 0;
+			}
+			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] Music-pause fix " + (state.focusHackEnabled ? "enabled" : "disabled") + ".\n");
 		}
 		else if (args.ArgC() > 1 and args[1] == "list") {
 			for (uint i = 0; i < g_channels.size(); i++) {
@@ -1128,6 +1169,9 @@ bool doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 			}
 			
 			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "\n\n");
+		}
+		else if (args.ArgC() > 1 and args[1] == "help") {
+			showConsoleHelp(plr, !inConsole);
 		}
 		
 		return true;

@@ -74,13 +74,22 @@ class Channel {
 		return (dj is null and !isDjReserved()) or (dj !is null and dj.entindex() == plr.entindex());
 	}
 	
-	void announce(string msg, CBasePlayer@ exclude=null) {
+	void announce(string msg, HUD messageType=HUD_PRINTTALK, CBasePlayer@ exclude=null) {
 		array<CBasePlayer@> listeners = getChannelListeners();
 		
 		for (uint i = 0; i < listeners.size(); i++) {
 			if (exclude is null or (listeners[i].entindex() != exclude.entindex())) {
-				g_PlayerFuncs.ClientPrint(listeners[i], HUD_PRINTTALK, "[Radio] " + msg + "\n");
+				g_PlayerFuncs.ClientPrint(listeners[i], messageType, "[Radio] " + msg + "\n");
 			}
+		}
+	}
+	
+	void handlePlayerLeave(CBasePlayer@ plr) {
+		if (currentDj == getPlayerUniqueId(plr)) {
+			currentDj = "";
+			announce("" + plr.pev.netname + " tuned out and is not the DJ anymore.", HUD_PRINTTALK, plr);
+		} else {
+			announce("" + plr.pev.netname + " tuned out.", HUD_PRINTNOTIFY, plr);
 		}
 	}
 	
