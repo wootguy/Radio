@@ -2,7 +2,7 @@ import os, sys, datetime, shutil
 from threading import Thread
 
 parallel_thread_count = 8
-src_dir = '../../../../svencoop_addon/mp3/radio_twlz/'
+src_dir = '../../../../svencoop_addon/mp3/radio_twlz_high/'
 readme = 'radio_twlz_readme.txt'
 version_file_src = 'version_check_success.mp3'
 version_file_dst = 'version_check/v2.mp3'
@@ -11,11 +11,12 @@ target_level = -1 # -1 = convert to all quality levels
 
 quality_levels = [
 	'-qscale:a 5 -ar 44100',
-	'-qscale:a 9 -ac 1 -ar 32000',
-	'-b:a 8k -ac 1 -ar 8000 -af "lowpass=f=2000"'
+	'-qscale:a 8 -ac 1 -ar 22050',
+	'-b:a 16k -ac 1 -ar 22050'
 ]
 
-# ffmpeg -i dj_quicksilver_ameno.mp3 -codec:a libmp3lame -b:a 8k -ac 1 -ar 8000 -af "lowpass=f=1600" -y test.mp3
+# ffmpeg -i dave_rogers_deja_vu.mp3 -codec:a libmp3lame -b:a 8k -ac 1 -ar 8000 -af "lowpass=f=1600" -y test.mp3
+# ffmpeg -i daft_punk_derezzed.mp3 -codec:a libmp3lame -qscale:a 8 -ac 1 -ar 44100 -y test.mp3
 
 output_roots = []
 output_dirs = []
