@@ -29,7 +29,10 @@ class Channel {
 				}
 				announce(msg);
 				playSong(song);
-				RelaySay(name + "|" + song.getName() + "|" + (currentDj != "" ? string(getDj().pev.netname) : "(none)"));
+				{
+					CBasePlayer@ dj = getDj();
+					RelaySay(name + "|" + song.getName() + "|" + (dj !is null ? string(getDj().pev.netname) : "(none)"));
+				}
 			} else if (shouldSkipSong) {
 				stopMusic();
 				announce("Song stopped.");

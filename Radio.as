@@ -4,10 +4,7 @@
 #include "util"
 
 // TODO high prio:
-// - nico error chat
-// - help menu links super broken
 // - valkries not in pack
-// - precache missing file
 
 // TODO minor:
 // - hide menu if vote menu opens
@@ -25,22 +22,11 @@
 // - message for removing/moving in queue
 // - dont start new music until 30 secs after map start or when everyone joins
 // - add FAQ to help command and remove menu options
+// - show current song in invite
 
 
 const string SONG_FILE_PATH = "scripts/plugins/Radio/songs.txt";
-
-CCVar@ g_rootPath;
-CCVar@ g_musicPackUpdateTime;
-CCVar@ g_musicPackVersionCheckFile;
-
-// different quality levels
-CCVar@ g_musicPackLink_q1;
-CCVar@ g_musicPackLink_q2;
-CCVar@ g_musicPackLink_q3;
-
-CCVar@ g_musicPackDesc_q1;
-CCVar@ g_musicPackDesc_q2;
-CCVar@ g_musicPackDesc_q3;
+const string MUSIC_PACK_PATH = "scripts/plugins/Radio/music_packs.txt";
 
 CCVar@ g_inviteCooldown;
 CCVar@ g_requestCooldown;
@@ -54,6 +40,11 @@ dictionary g_player_states;
 array<Channel> g_channels;
 array<Song> g_songs;
 FileNode g_root_folder;
+
+array<MusicPack> g_music_packs;
+string g_music_pack_update_time;
+string g_version_check_file;
+string g_root_path;
 
 dictionary g_level_changers; // don't restart the music for these players on level changes
 
@@ -152,7 +143,7 @@ class Song {
 	
 	string getMp3PlayCommand() {
 		string mp3 = path; // don't modify the original var
-		return "mp3 play " + g_rootPath.GetString() + mp3.Replace(".mp3", "");
+		return "mp3 play " + g_root_path + mp3.Replace(".mp3", "");
 	}
 }
 
@@ -160,6 +151,16 @@ class FileNode {
 	string name;
 	Song@ file = null;
 	array<FileNode@> children;
+}
+
+class MusicPack {
+	string link;
+	string desc;
+	
+	string getSimpleDesc() {
+		string simple = desc;
+		return simple.Replace("\\r", "").Replace("\\w", "").Replace("\\d", "").Replace("\n", " ");
+	}
 }
 
 
@@ -172,16 +173,6 @@ void PluginInit() {
 	g_Hooks.RegisterHook(Hooks::Player::ClientDisconnect, @ClientLeave);
 	g_Hooks.RegisterHook(Hooks::Player::ClientSay, @ClientSay);
 	g_Hooks.RegisterHook(Hooks::Game::MapChange, @MapChange);
-	
-	@g_rootPath = CCVar("rootPath", "mp3/radio/", "radio music root folder", ConCommandFlag::AdminOnly);
-	@g_musicPackUpdateTime = CCVar("musicPackUpdateTime", "????-??-??", "music pack last updated time", ConCommandFlag::AdminOnly);
-	@g_musicPackVersionCheckFile = CCVar("musicPackVersionCheckFile", "version_check/v1.mp3", "version check file (used in help menu)", ConCommandFlag::AdminOnly);
-	@g_musicPackLink_q1 = CCVar("musicPackLink_q1", "https://asdf.com/qwerty_q1.zip", "music pack download link", ConCommandFlag::AdminOnly);
-	@g_musicPackLink_q2 = CCVar("musicPackLink_q2", "https://asdf.com/qwerty_q2.zip", "music pack download link", ConCommandFlag::AdminOnly);
-	@g_musicPackLink_q3 = CCVar("musicPackLink_q3", "https://asdf.com/qwerty_q3.zip", "music pack download link", ConCommandFlag::AdminOnly);
-	@g_musicPackDesc_q1 = CCVar("musicPackDesc_q1", "Maximum \\r(1.2 GB)  \\d(44 kHz Stereo, 130 kbps)", "music pack description", ConCommandFlag::AdminOnly);
-	@g_musicPackDesc_q2 = CCVar("musicPackDesc_q2", "Optimal \\r(370 MB)  \\d(22 kHz Mono, 65 kbps)", "music pack description", ConCommandFlag::AdminOnly);
-	@g_musicPackDesc_q3 = CCVar("musicPackDesc_q3", "Shitty \\r(162 MB)  \\d(22 kHz Mono, 8 kbps)", "music pack description", ConCommandFlag::AdminOnly);
 	
 	@g_inviteCooldown = CCVar("inviteCooldown", 600, "Radio invite cooldown", ConCommandFlag::AdminOnly);
 	@g_requestCooldown = CCVar("requestCooldown", 300, "Song request cooldown", ConCommandFlag::AdminOnly);
@@ -209,16 +200,18 @@ void PluginInit() {
 		g_level_changers[getPlayerUniqueId(plr)] = true;
 	}
 	
-	g_root_folder.name = g_rootPath.GetString();
+	g_root_folder.name = g_root_path;
 	loadSongs();
+	loadMusicPackInfo();
 	
 	g_Scheduler.SetInterval("radioThink", 0.5f, -1);
 	g_Scheduler.SetInterval("radioResumeHack", 0.05f, -1);
 }
 
 void MapInit() {
-	g_Game.PrecacheGeneric(g_rootPath.GetString() + g_musicPackVersionCheckFile.GetString());
+	g_Game.PrecacheGeneric(g_root_path + g_version_check_file);
 	loadSongs();
+	loadMusicPackInfo();
 	
 	// Reset temporary vars
 	array<string>@ states = g_player_states.getKeys();
@@ -742,7 +735,7 @@ void callbackMenuHelp(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const C
 		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] You should be hearing a text-to-speech voice now. If not, increase music volume in Options -> Audio.\n");
 		
 		Song testSong = Song();
-		testSong.path = g_musicPackVersionCheckFile.GetString();
+		testSong.path = g_version_check_file;
 		
 		clientCommand(plr, testSong.getMp3PlayCommand());
 		g_Scheduler.SetTimeout("openMenuHelp", 0.0f, EHandle(plr));
@@ -767,11 +760,8 @@ void callbackMenuDownload(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, con
 	if (option.Find("download-") == 0) {
 		int slot = atoi(option.SubString(9));
 		
-		array<CCVar@> allLinks = {g_musicPackLink_q1, g_musicPackLink_q2, g_musicPackLink_q3};
-		
-		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "Download link is below. You can copy it from the console.\n\n");
-		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, allLinks[slot].GetString() + "\n\n");
-		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "Extract to Steam/Common/Sven Co-op/svencoop_downloads/\n");
+		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] Download link is below. You can copy it from the console. Extract to svencoop_downloads/\n\n");
+		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, g_music_packs[slot].link + "\n\n");
 		
 		g_Scheduler.SetTimeout("openMenuHelp", 0.0f, EHandle(plr));
 	}
@@ -789,8 +779,8 @@ void openMenuRadio(EHandle h_plr) {
 	}
 	
 	int eidx = plr.entindex();
-	PlayerState@ state = getPlayerState(plr);
-	Channel@ chan = g_channels[state.channel]; // TODO: invalid index somehow
+	PlayerState@ state = getPlayerState(plr);	
+	Channel@ chan = g_channels[state.channel];
 	
 	@g_menus[eidx] = CTextMenu(@callbackMenuRadio);
 	g_menus[eidx].SetTitle("\\yRadio - " + chan.name);
@@ -1072,7 +1062,7 @@ void openMenuHelp(EHandle h_plr) {
 	g_menus[eidx].AddItem("\\wShow command help\\y", any("help-commands"));
 	
 	string label = "\\wRestart music\\y";
-	label += "\n\nMusic pack last updated:\n\\r" + g_musicPackUpdateTime.GetString() + "\\y";
+	label += "\n\nMusic pack last updated:\n\\r" + g_music_pack_update_time + "\\y";
 	
 	g_menus[eidx].AddItem(label, any("restart-music"));
 	
@@ -1093,15 +1083,8 @@ void openMenuDownload(EHandle h_plr) {
 	g_menus[eidx].SetTitle("\\yChoose Music Quality");
 	g_menus[eidx].AddItem("\\w..\\y", any("help"));
 	
-	array<CCVar@> allLinks = {g_musicPackLink_q1, g_musicPackLink_q2, g_musicPackLink_q3};
-	array<CCVar@> allDesc = {g_musicPackDesc_q1, g_musicPackDesc_q2, g_musicPackDesc_q3};
-	
-	for (uint i = 0; i < allLinks.size(); i++) {
-		if (allLinks[i].GetString().Length() == 0) {
-			break;
-		}
-		
-		g_menus[eidx].AddItem("\\w" + allDesc[i].GetString() + "\\y", any("download-" + i));
+	for (uint i = 0; i < g_music_packs.size(); i++) {		
+		g_menus[eidx].AddItem("\\w" + g_music_packs[i].desc + "\\y", any("download-" + i));
 	}
 	
 	g_menus[eidx].Register();
@@ -1114,6 +1097,7 @@ void showConsoleHelp(CBasePlayer@ plr, bool showChatMessage) {
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '------------------------------ Radio Commands ------------------------------\n\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Type ".radio" to toggle the radio menu.\n\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Type ".radio hud" to toggle the radio HUD.\n\n');
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Type ".radio list" to show who\'s listening.\n\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Type ".radio pausefix" to toggle the music-pause fix.\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    This prevents the music pausing when the game window loses focus (alt+tab).\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    In order for this to work you need to also set "cl_filterstuffcmd 0" in the console.\n');
@@ -1123,23 +1107,18 @@ void showConsoleHelp(CBasePlayer@ plr, bool showChatMessage) {
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    Only disable cl_filterstuffcmd on servers you trust. Add "cl_filterstuffcmd 1" to userconfig.cfg\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    so you don\'t have to remember to turn it back on.\n\n');
 	
-	array<CCVar@> allLinks = {g_musicPackLink_q1, g_musicPackLink_q2, g_musicPackLink_q3};
-	array<CCVar@> allDesc = {g_musicPackDesc_q1, g_musicPackDesc_q2, g_musicPackDesc_q3};
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Music pack download links (choose which quality you want):\n');
 	
-	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Music pack download links:\n');
-	
-	for (uint i = 0; i < allLinks.size(); i++) {
-		if (allLinks[i].GetString().Length() == 0) {
-			break;
-		}
+	string stringu = "";
+	for (uint i = 0; i < g_music_packs.size(); i++) {		
+		string desc = g_music_packs[i].getSimpleDesc();
+		string link = g_music_packs[i].link;
 		
-		string desc = allDesc[i].GetString();
-		desc = desc.Replace("\\r", "").Replace("\\w", "").Replace("\\d", "").Replace("\n", " ");
-		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "    " + desc + "\n        " + allLinks[i].GetString() + "\n\n");
+		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "- " + desc + "\n");
+		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "  " + link + "\n\n");
 	}
 	
-	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Music pack last updated:\n' + g_musicPackUpdateTime.GetString() + '\n');
-
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Music pack last updated:\n' + g_music_pack_update_time + '\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '\n--------------------------------------------------------------------------\n');
 
 	if (showChatMessage) {
