@@ -1,0 +1,16 @@
+[info]
+root_path = mp3/radio_twlz/
+version_check_file = version_check/v2.mp3
+last_update_time = 2021-04-15
+
+[music_pack]
+Maximum \r(1.2 GB) \d(44 kHz Stereo, 130 kbps)
+https://drive.google.com/u/0/uc?id=1WYov6VK3rYxxKBVFt8N8ttsjNQBFR-wE&export=download
+
+[music_pack]
+Optimal \r(370 MB) \d(22 kHz Mono, 85 kbps)
+https://drive.google.com/u/0/uc?id=1ghUCEhlpfJzuuiK5wQw3tzJBap48G7zw&export=download
+
+[music_pack]
+Shitty \r(162 MB) \d(22 kHz Mono, 16 kbps)
+https://drive.google.com/u/0/uc?id=1qFRs11DJGBswoAL7Xt2Npsmt0bwYdMXG&export=download

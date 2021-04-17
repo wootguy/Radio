@@ -37,6 +37,73 @@ void loadSongs() {
 	}
 }
 
+enum MusicPackParseModes {
+	PARSE_INFO,
+	PARSE_PACK_DESC,
+	PARSE_PACK_LINK,
+}
+
+void loadMusicPackInfo() {
+	g_music_packs.resize(0);
+	g_music_pack_update_time = "???";
+	g_version_check_file = "???";
+	
+	File@ file = g_FileSystem.OpenFile(MUSIC_PACK_PATH, OpenFile::READ);
+
+	MusicPack pack;
+	int parse_mode = -1;
+
+	if (file !is null && file.IsOpen()) {
+		while (!file.EOFReached()) {
+			string line;
+			file.ReadLine(line);
+			
+			line.Trim();
+			
+			if (line.IsEmpty())
+				continue;
+			
+			if (line == "[info]") {
+				parse_mode = PARSE_INFO;
+				continue;
+			} else if (line == "[music_pack]") {
+				parse_mode = PARSE_PACK_DESC;
+				continue;
+			}
+			
+			if (parse_mode == PARSE_INFO) {			
+				array<string> parts = line.Split("=");
+				string key = parts[0];
+				string value = parts[1];
+				key.Trim();
+				value.Trim();
+				
+				if (key == "last_update_time") {
+					g_music_pack_update_time = value;
+				} else if (key == "version_check_file") {
+					g_version_check_file = value;
+				} else if (key == "root_path") {
+					g_root_path = value;
+				}
+			}
+			else if (parse_mode == PARSE_PACK_DESC) {
+				pack.desc = line;
+				parse_mode = PARSE_PACK_LINK;
+			}
+			else if (parse_mode == PARSE_PACK_LINK) {
+				pack.link = line;
+				g_music_packs.insertLast(pack);
+				parse_mode = -1;
+				println("Added music pack:\n" + pack.desc + "\n" + pack.link);
+			}
+		}
+
+		file.Close();
+	} else {
+		g_Log.PrintF("[Radio] music pack file not found: " + MUSIC_PACK_PATH + "\n");
+	}
+}
+
 void addFileNode(string parentNodePath, string nodeName, Song@ song=null) {
 	FileNode@ currentNode = g_root_folder;
 	
