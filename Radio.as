@@ -344,7 +344,7 @@ void radioResumeHack() {
 		if (state.focusHackEnabled and state.channel >= 0) {
 			Channel@ chan = g_channels[state.channel];
 		
-			clientCommand(plr, "cd resume");
+			clientCommand(plr, "cd resume", MSG_ONE_UNRELIABLE);
 		}
 	}
 }
@@ -711,22 +711,6 @@ void callbackMenuHelp(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const C
 	else if (option == "download-pack") {
 		g_Scheduler.SetTimeout("openMenuDownload", 0.0f, EHandle(plr));
 	}
-	else if (option == "help-cant-hear") {
-		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] Can't hear music?\n");
-		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "  1) Download and install the latest music pack\n");
-		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "  2) Pick \"Test installation\" to test your installation\n");
-		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "  3) Check that your music volume isn't too low in Options -> Audio\n");
-		g_Scheduler.SetTimeout("openMenuHelp", 0.0f, EHandle(plr));
-	}
-	else if (option == "help-desync") {
-		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] Song changing too soon?\n");
-		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "  Your music playback was desynced from the server. There are a few causes for this:\n");
-		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "    - You joined a channel after the music started (you'll see red desync text in this case)\n");
-		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "    - You alt-tabbed out of the game (music pauses when the game isn't in focus)\n");
-		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "    - Your game or PC was frozen for a few seconds\n");
-		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "  To fix the desync, just wait for the next song to start and keep the game window in focus.\n");
-		g_Scheduler.SetTimeout("openMenuHelp", 0.0f, EHandle(plr));
-	}
 	else if (option == "help-commands") {
 		showConsoleHelp(plr, true);
 		g_Scheduler.SetTimeout("openMenuHelp", 0.0f, EHandle(plr));
@@ -1055,16 +1039,14 @@ void openMenuHelp(EHandle h_plr) {
 	
 	g_menus[eidx].AddItem("\\w..\\y", any("main-menu"));
 	g_menus[eidx].AddItem("\\rDownload music pack\\y", any("download-pack"));
-	g_menus[eidx].AddItem("\\wCan't hear music?\\y", any("help-cant-hear"));
-	g_menus[eidx].AddItem("\\wSong changing too soon?\\y", any("help-desync"));
 	g_menus[eidx].AddItem("\\wTest installation\\y", any("test-install"));
-	//g_menus[eidx].AddItem("\\wRestart music\\y", any("restart-music"));
-	g_menus[eidx].AddItem("\\wShow command help\\y", any("help-commands"));
+	g_menus[eidx].AddItem("\\wRestart music\\y", any("restart-music"));
+	//g_menus[eidx].AddItem("\\wShow command help\\y", any("help-commands"));
 	
-	string label = "\\wRestart music\\y";
+	string label = "\\wShow command help\\y";
 	label += "\n\nMusic pack last updated:\n\\r" + g_music_pack_update_time + "\\y";
 	
-	g_menus[eidx].AddItem(label, any("restart-music"));
+	g_menus[eidx].AddItem(label, any("help-commands"));
 	
 	g_menus[eidx].Register();
 	g_menus[eidx].Open(0, 0, plr);
@@ -1095,7 +1077,8 @@ void openMenuDownload(EHandle h_plr) {
 
 void showConsoleHelp(CBasePlayer@ plr, bool showChatMessage) {
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '------------------------------ Radio Commands ------------------------------\n\n');
-	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Type ".radio" to toggle the radio menu.\n\n');
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Type ".radio" to open the radio menu.\n\n');
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Type ".radio faq" for answers to frequently asked questions.\n\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Type ".radio hud" to toggle the radio HUD.\n\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Type ".radio list" to show who\'s listening.\n\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Type ".radio pausefix" to toggle the music-pause fix.\n');
@@ -1106,9 +1089,30 @@ void showConsoleHelp(CBasePlayer@ plr, bool showChatMessage) {
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    In the past this has been abused for things like rebinding your jump button to crash the game.\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    Only disable cl_filterstuffcmd on servers you trust. Add "cl_filterstuffcmd 1" to userconfig.cfg\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    so you don\'t have to remember to turn it back on.\n\n');
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '\n--------------------------------------------------------------------------\n');
+
+	if (showChatMessage) {
+		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, '[Radio] Help info sent to your console.\n');
+	}
+}
+
+void showConsoleFaq(CBasePlayer@ plr, bool showChatMessage) {
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "------------------------------ Radio FAQ ------------------------------\n\n");
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "Can't hear music?\n");
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "  1) Download and install the latest music pack\n");
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "  2) Pick \"Test installation\" in the Help menu to test your installation\n");
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "  3) Check that your music volume isn't too low in Options -> Audio\n");
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "  4) Pick \"Restart music\" in the Help menu and it should start working\n");
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "  You will see 'Could not find music file' errors in the console if you didn't install properly.\n");
 	
-	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Music pack download links (choose which quality you want):\n');
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "\nSong changing too soon?\n");
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "  Your music playback was desynced from the server. This happens when:\n");
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "    - You joined a channel after the music started\n");
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "    - You alt-tabbed out of the game (music pauses when the game isn't in focus)\n");
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "  To fix the desync, just wait for the next song to start and keep the game window in focus.\n");
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "  You might want to try the pausefix command if this happens a lot (see .radio help).\n");
 	
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "\nMusic pack download links (choose which quality you want):\n");
 	string stringu = "";
 	for (uint i = 0; i < g_music_packs.size(); i++) {		
 		string desc = g_music_packs[i].getSimpleDesc();
@@ -1118,11 +1122,11 @@ void showConsoleHelp(CBasePlayer@ plr, bool showChatMessage) {
 		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "  " + link + "\n\n");
 	}
 	
-	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Music pack last updated:\n' + g_music_pack_update_time + '\n');
-	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '\n--------------------------------------------------------------------------\n');
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "Music pack last updated:\n" + g_music_pack_update_time + "\n");
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "\n------------------------------------------------------------------------\n");
 
 	if (showChatMessage) {
-		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, '[Radio] Help info sent to your console.\n');
+		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] FAQ sent to your console.\n");
 	}
 }
 
@@ -1188,6 +1192,9 @@ bool doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 		}
 		else if (args.ArgC() > 1 and args[1] == "help") {
 			showConsoleHelp(plr, !inConsole);
+		}
+		else if (args.ArgC() > 1 and args[1] == "faq") {
+			showConsoleFaq(plr, !inConsole);
 		}
 		
 		return true;
