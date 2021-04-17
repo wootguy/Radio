@@ -7,20 +7,18 @@ class Channel {
 	DateTime startTime; // time last song was started
 	bool shouldSkipSong = false;
 	
+	array<string> mapChangeListeners;
+	
 	void think() {
-		bool isSongFinished = true;
-		
-		if (queue.size() > 0) {
-			int timeleft = getTimeLeft();
-			
-			isSongFinished = timeleft <= 0;
-			
-			if (isSongFinished or shouldSkipSong) {
-				queue.removeAt(0);
-			}
+		if (shouldWaitForListeners() > 0) {
+			return;
 		}
 		
-		if (isSongFinished or shouldSkipSong) {
+		if (isSongFinished() or shouldSkipSong) {
+			if (queue.size() > 0) {
+				queue.removeAt(0);
+			}
+			
 			if (queue.size() > 0) {
 				Song@ song = queue[0];
 				string msg = "Now playing: " + song.getName();
@@ -40,6 +38,50 @@ class Channel {
 			
 			shouldSkipSong = false;
 		}
+	}
+	
+	bool isSongFinished() {
+		return getTimeLeft() <= 0;
+	}
+	
+	bool isWaitingToPlaySong() {
+		return isSongFinished() and shouldWaitForListeners() > 0;
+	}
+	
+	void rememberListeners() {
+		mapChangeListeners.resize(0);
+		
+		array<CBasePlayer@> listeners = getChannelListeners();
+		for (uint i = 0; i < listeners.size(); i++) {
+			mapChangeListeners.insertLast(getPlayerUniqueId(listeners[i]));
+		}
+	}
+	
+	void handlePlayerJoin(CBasePlayer@ joiner) {
+		string joinerId = getPlayerUniqueId(joiner);
+		
+		for (uint i = 0; i < mapChangeListeners.size(); i++) {
+			if (joinerId == mapChangeListeners[i]) {
+				mapChangeListeners.removeAt(i);
+				return;
+			}
+		}
+	}
+	
+	// returns number of listeners that haven't joined yet
+	int shouldWaitForListeners() {
+		int waitCount = 0;
+		
+		if (g_Engine.time < g_listenerWaitTime.GetInt()) {
+			for (uint i = 0; i < mapChangeListeners.size(); i++) {
+				CBasePlayer@ plr = getPlayerByUniqueId(mapChangeListeners[i]);
+				if (plr is null or !plr.IsConnected()) {
+					waitCount++;
+				}
+			}
+		}
+		
+		return waitCount;
 	}
 	
 	int getTimeLeft() {
@@ -69,7 +111,7 @@ class Channel {
 	
 	bool isDjReserved() {
 		CBasePlayer@ dj = getDj();
-		return dj is null and currentDj.Length() > 0 and g_Engine.time < g_djReserveTime.GetInt();
+		return (dj is null or !dj.IsConnected()) and currentDj.Length() > 0 and g_Engine.time < g_djReserveTime.GetInt();
 	}
 	
 	bool canDj(CBasePlayer@ plr) {
