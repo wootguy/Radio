@@ -7,22 +7,17 @@
 // - valkries not in pack
 
 // TODO minor:
-// - hide menu if vote menu opens
 // - search for songs
 // - kick inactive DJs (no song for long time)
 // - invite with text message instead of menu
 // - prevent map music playing if radio is on
 // - show who else is listening/desynced with music sprites or smth
 // - alt+tab can run twice or smth
-// - unreliable for pausefix
 // - keep hud message active longer for map changes (2-4 seconds)
 // - pausefix <float> (only run once per sec)
 // - dont show queue message from djs
 // - let dj rename channel
 // - message for removing/moving in queue
-// - dont start new music until 30 secs after map start or when everyone joins
-// - add FAQ to help command and remove menu options
-// - show current song in invite
 
 
 const string SONG_FILE_PATH = "scripts/plugins/Radio/songs.txt";
@@ -33,6 +28,7 @@ CCVar@ g_requestCooldown;
 CCVar@ g_djSwapCooldown;
 CCVar@ g_skipSongCooldown;
 CCVar@ g_djReserveTime;
+CCVar@ g_listenerWaitTime;
 CCVar@ g_maxQueue;
 CCVar@ g_channelCount;
 
@@ -179,6 +175,7 @@ void PluginInit() {
 	@g_djSwapCooldown = CCVar("djSwapCooldown", 5, "DJ mode toggle cooldown", ConCommandFlag::AdminOnly);
 	@g_skipSongCooldown = CCVar("skipSongCooldown", 10, "DJ mode toggle cooldown", ConCommandFlag::AdminOnly);
 	@g_djReserveTime = CCVar("djReserveTime", 240, "Time to reserve DJ slots after level change", ConCommandFlag::AdminOnly);
+	@g_listenerWaitTime = CCVar("listenerWaitTime", 30, "Time to wait for listeners before starting new music after a map change", ConCommandFlag::AdminOnly);
 	@g_maxQueue = CCVar("maxQueue", 8, "Max songs that can be queued", ConCommandFlag::AdminOnly);
 	@g_channelCount = CCVar("channelCount", 3, "Number of available channels", ConCommandFlag::AdminOnly);
 	
@@ -241,6 +238,13 @@ HookReturnCode MapChange() {
 			clientCommand(plr, "mp3fadetime 999999");
 		}
 	}
+	
+	// wait before saving connected players in case classic mode is restarting the map
+	if (g_Engine.time > 5) {
+		for (uint i = 0; i < g_channels.size(); i++) {
+			g_channels[i].rememberListeners();
+		}
+	}
 
 	return HOOK_CONTINUE;
 }
@@ -257,6 +261,8 @@ HookReturnCode ClientJoin(CBasePlayer@ plr) {
 				g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] Now playing: " + song.getName() + "\n");
 				state.tuneTime = DateTime();
 			}
+			
+			g_channels[state.channel].handlePlayerJoin(plr);
 		}
 		
 		g_level_changers[id] = true;
@@ -319,8 +325,29 @@ void radioThink() {
 			Song@ song = chan.getSong();
 			CBasePlayer@ dj = chan.getDj();
 			string djName = dj !is null ? " - " + dj.pev.netname : "";
+			
+			if (dj is null and chan.isDjReserved()) {
+				int reserveTimeLeft = int(Math.Ceil(g_djReserveTime.GetInt() - g_Engine.time));
+				djName = " - Waiting " + reserveTimeLeft + "s for DJ";
+			}
+			
 			string msg = chan.name + djName + " (" + chan.getChannelListeners().size() + " listening)";
-			string songStr = (song !is null) ? song.getName() + "  " + formatTime(chan.getTimeLeft()) : "";
+			string songStr = "";
+			
+			if (song !is null) {
+				songStr = song.getName() + "  " + formatTime(chan.getTimeLeft());
+				
+				if (chan.isWaitingToPlaySong()) {
+					int waitingFor = chan.shouldWaitForListeners();
+					int waitTimeLeft = int(Math.Ceil(g_listenerWaitTime.GetInt() - g_Engine.time));
+					songStr = song.getName() + "\n(waiting " + waitTimeLeft + "s for " + waitingFor + " listeners)";
+				} else {
+					int diff = int(TimeDifference(state.tuneTime, chan.startTime).GetTimeDifference());
+					if (diff > 0) {
+						songStr += "\n(desynced by " + diff + "+ seconds)";
+					}
+				}
+			}
 			
 			g_PlayerFuncs.HudMessage(plr, params, msg + "\n" + songStr);
 		}
@@ -650,7 +677,7 @@ void callbackMenuInvite(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const
 		}
 		else {
 			state.lastInviteTime["\\everyone"] = g_Engine.time;
-			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] Invitations sent to " + inviteCount + " players.\n");
+			chan.announce("" + plr.pev.netname + " invited " + inviteCount + " players");
 		}
 
 		g_Scheduler.SetTimeout("openMenuRadio", 0.0f, EHandle(plr));
@@ -772,20 +799,16 @@ void openMenuRadio(EHandle h_plr) {
 	CBasePlayer@ dj = chan.getDj();
 	bool isDjReserved = chan.isDjReserved();
 	bool canDj = chan.canDj(plr);
+	bool isDj = dj !is null and dj.entindex() == plr.entindex();
 
 	g_menus[eidx].AddItem("\\wHelp\\y", any("help"));
 	g_menus[eidx].AddItem("\\wTurn off\\y", any("turn-off"));
 	g_menus[eidx].AddItem("\\wChange channel\\y", any("channels"));
 	g_menus[eidx].AddItem("\\w" + (canDj ? "Queue" : "Request") + " song" + "\\y", any("add-song"));
 	g_menus[eidx].AddItem("\\w" + (canDj ? "Edit" : "View") + " queue  " + chan.getQueueCountString() + "\\y", any("edit-queue"));
-	
-	if (canDj) {
-		bool isDj = dj !is null and dj.entindex() == plr.entindex();
-		
-		g_menus[eidx].AddItem("\\wSkip song\\y", any("skip-song"));
-		g_menus[eidx].AddItem("\\w" + (isDj ? "Quit DJ" : "Become DJ") + "\\y", any("become-dj"));
-		g_menus[eidx].AddItem("\\wInvite\\y", any("invite"));
-	}
+	g_menus[eidx].AddItem("\\wSkip song\\y", any("skip-song"));
+	g_menus[eidx].AddItem("\\w" + (isDj ? "Quit DJ" : "Become DJ") + "\\y", any("become-dj"));
+	g_menus[eidx].AddItem("\\wInvite\\y", any("invite"));
 	
 	g_menus[eidx].Register();
 	g_menus[eidx].Open(0, 0, plr);
@@ -983,7 +1006,14 @@ void openMenuInviteRequest(EHandle h_plr, string asker, int channel) {
 	g_menus[eidx].SetTitle("\\yYou're invited to listen to\nthe radio on " + g_channels[channel].name + "\n-" + asker + "\n");
 	
 	g_menus[eidx].AddItem("\\wAccept\\y", any("channel-" + channel));
-	g_menus[eidx].AddItem("\\wDecline\\y", any("exit"));
+	
+	string label = "\\wDecline\\y";
+	label += "\n\nCurrent song:\n";
+	
+	Song@ song = chan.getSong();
+	label += song !is null ? "\\w" + song.getName() : "\\d(nothing)";
+	
+	g_menus[eidx].AddItem(label + "\\y", any("exit"));
 	
 	g_menus[eidx].Register();
 	g_menus[eidx].Open(0, 0, plr);
@@ -1118,8 +1148,8 @@ void showConsoleFaq(CBasePlayer@ plr, bool showChatMessage) {
 		string desc = g_music_packs[i].getSimpleDesc();
 		string link = g_music_packs[i].link;
 		
-		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "- " + desc + "\n");
-		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "  " + link + "\n\n");
+		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "  - " + desc + "\n");
+		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "    " + link + "\n\n");
 	}
 	
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "Music pack last updated:\n" + g_music_pack_update_time + "\n");
