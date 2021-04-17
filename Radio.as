@@ -3,13 +3,29 @@
 #include "songloader"
 #include "util"
 
-// TODO:
+// TODO high prio:
+// - nico error chat
+// - help menu links super broken
+// - valkries not in pack
+// - precache missing file
+
+// TODO minor:
 // - hide menu if vote menu opens
 // - search for songs
 // - kick inactive DJs (no song for long time)
 // - invite with text message instead of menu
 // - prevent map music playing if radio is on
 // - show who else is listening/desynced with music sprites or smth
+// - alt+tab can run twice or smth
+// - unreliable for pausefix
+// - keep hud message active longer for map changes (2-4 seconds)
+// - pausefix <float> (only run once per sec)
+// - dont show queue message from djs
+// - let dj rename channel
+// - message for removing/moving in queue
+// - dont start new music until 30 secs after map start or when everyone joins
+// - add FAQ to help command and remove menu options
+
 
 const string SONG_FILE_PATH = "scripts/plugins/Radio/songs.txt";
 
@@ -56,14 +72,13 @@ array<CTextMenu@> g_menus = {
 
 class PlayerState {
 	int channel = -1;
-	string keepMenuOpen = ""; // value is the menu type to open
 	DateTime tuneTime; // last time player chose a channel (for displaying desync info)
 	dictionary lastInviteTime; // for invite cooldowns per player and for \everyone
 	float lastRequest; // for request cooldowns
 	float lastDjToggle; // for cooldown
 	float lastSongSkip; // for cooldown
 	bool focusHackEnabled = false;
-	bool showHud = false;
+	bool showHud = true;
 	bool neverUsedBefore = true;
 	
 	bool shouldInviteCooldown(CBasePlayer@ plr, string id) {
@@ -164,9 +179,9 @@ void PluginInit() {
 	@g_musicPackLink_q1 = CCVar("musicPackLink_q1", "https://asdf.com/qwerty_q1.zip", "music pack download link", ConCommandFlag::AdminOnly);
 	@g_musicPackLink_q2 = CCVar("musicPackLink_q2", "https://asdf.com/qwerty_q2.zip", "music pack download link", ConCommandFlag::AdminOnly);
 	@g_musicPackLink_q3 = CCVar("musicPackLink_q3", "https://asdf.com/qwerty_q3.zip", "music pack download link", ConCommandFlag::AdminOnly);
-	@g_musicPackDesc_q1 = CCVar("musicPackDesc_q1", "Maximum \\r(500 TB)  \\d(44 kHz Stereo, 130 kbps)", "music pack description", ConCommandFlag::AdminOnly);
-	@g_musicPackDesc_q2 = CCVar("musicPackDesc_q2", "Optimal \\r(1.0 GB)  \\d(32 kHz Mono, 65 kbps)", "music pack description", ConCommandFlag::AdminOnly);
-	@g_musicPackDesc_q3 = CCVar("musicPackDesc_q3", "Shitty \\r(100 MB)  \\d(8 kHz Mono, 8 kbps)", "music pack description", ConCommandFlag::AdminOnly);
+	@g_musicPackDesc_q1 = CCVar("musicPackDesc_q1", "Maximum \\r(1.2 GB)  \\d(44 kHz Stereo, 130 kbps)", "music pack description", ConCommandFlag::AdminOnly);
+	@g_musicPackDesc_q2 = CCVar("musicPackDesc_q2", "Optimal \\r(370 MB)  \\d(22 kHz Mono, 65 kbps)", "music pack description", ConCommandFlag::AdminOnly);
+	@g_musicPackDesc_q3 = CCVar("musicPackDesc_q3", "Shitty \\r(162 MB)  \\d(22 kHz Mono, 8 kbps)", "music pack description", ConCommandFlag::AdminOnly);
 	
 	@g_inviteCooldown = CCVar("inviteCooldown", 600, "Radio invite cooldown", ConCommandFlag::AdminOnly);
 	@g_requestCooldown = CCVar("requestCooldown", 300, "Song request cooldown", ConCommandFlag::AdminOnly);
@@ -214,7 +229,6 @@ void MapInit() {
 		state.lastRequest = -9999;
 		state.lastDjToggle = -9999;
 		state.lastSongSkip = -9999;
-		state.keepMenuOpen = ""; // prevent overflows while parsing game info
 	}
 }
 
@@ -256,8 +270,9 @@ HookReturnCode ClientJoin(CBasePlayer@ plr) {
 	}
 	
 	// always doing this in case someone left during a level change, preventing the value from resetting
-	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "[Radio] Your 'mp3fadetime' setting was reset to 2.\n");
-	clientCommand(plr, "mp3fadetime 2");
+	// TODO: actually can't do this because it cranks volume up if a fadeout is currently active
+	//g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "[Radio] Your 'mp3fadetime' setting was reset to 2.\n");
+	//clientCommand(plr, "mp3fadetime 2");
 	
 	return HOOK_CONTINUE;
 }
@@ -267,7 +282,6 @@ HookReturnCode ClientLeave(CBasePlayer@ plr) {
 	
 	// TODO: this won't trigger for players who leave during level changes
 	g_level_changers.delete(getPlayerUniqueId(plr));
-	state.keepMenuOpen = "";
 	
 	if (state.channel >= 0) {
 		if (g_channels[state.channel].currentDj == getPlayerUniqueId(plr)) {
@@ -292,10 +306,6 @@ void radioThink() {
 		}
 		
 		PlayerState@ state = getPlayerState(plr);
-		
-		if (state.keepMenuOpen.Length() > 0) {
-			g_Scheduler.SetTimeout(state.keepMenuOpen, 0.0f, EHandle(plr));
-		}
 
 		if (state.showHud and state.channel >= 0) {
 			Channel@ chan = g_channels[state.channel];
@@ -316,7 +326,7 @@ void radioThink() {
 			Song@ song = chan.getSong();
 			CBasePlayer@ dj = chan.getDj();
 			string djName = dj !is null ? " - " + dj.pev.netname : "";
-			string msg = chan.name + djName + " - " + chan.getChannelListeners().size() + " listening";
+			string msg = chan.name + djName + " (" + chan.getChannelListeners().size() + " listening)";
 			string songStr = (song !is null) ? song.getName() + "  " + formatTime(chan.getTimeLeft()) : "";
 			
 			g_PlayerFuncs.HudMessage(plr, params, msg + "\n" + songStr);
@@ -354,8 +364,6 @@ void callbackMenuRadio(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const 
 	}
 
 	PlayerState@ state = getPlayerState(plr);
-	
-	state.keepMenuOpen = "";
 
 	string option = "";
 	item.m_pUserData.retrieve(option);
@@ -465,8 +473,6 @@ void callbackMenuChannelSelect(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber
 	}
 
 	PlayerState@ state = getPlayerState(plr);
-	
-	state.keepMenuOpen = "";
 
 	string option = "";
 	item.m_pUserData.retrieve(option);
@@ -504,8 +510,6 @@ void callbackMenuSong(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const C
 	}
 
 	PlayerState@ state = getPlayerState(plr);
-	
-	state.keepMenuOpen = "";
 
 	Channel@ chan = @g_channels[state.channel];
 	bool canDj = chan.canDj(plr);
@@ -552,8 +556,6 @@ void callbackMenuEditQueue(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, co
 	}
 
 	PlayerState@ state = getPlayerState(plr);
-	
-	state.keepMenuOpen = "";
 
 	Channel@ chan = @g_channels[state.channel];
 	bool canDj = chan.canDj(plr);
@@ -619,8 +621,6 @@ void callbackMenuInvite(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const
 	}
 
 	PlayerState@ state = getPlayerState(plr);
-	
-	state.keepMenuOpen = "";
 
 	Channel@ chan = @g_channels[state.channel];
 
@@ -648,8 +648,7 @@ void callbackMenuInvite(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const
 				continue;
 			}
 			
-			g_Scheduler.SetTimeout("openMenuInviteRequest", 0.5f, EHandle(target), "" + plr.pev.netname, state.channel, targetState.keepMenuOpen);
-			targetState.keepMenuOpen = "";
+			g_Scheduler.SetTimeout("openMenuInviteRequest", 0.5f, EHandle(target), "" + plr.pev.netname, state.channel);
 			inviteCount++;
 		}
 		
@@ -674,8 +673,7 @@ void callbackMenuInvite(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const
 		
 		if (target !is null) {
 			PlayerState@ targetState = getPlayerState(target);
-			g_Scheduler.SetTimeout("openMenuInviteRequest", 0.5f, EHandle(target), "" + plr.pev.netname, state.channel, targetState.keepMenuOpen);
-			targetState.keepMenuOpen = "";
+			g_Scheduler.SetTimeout("openMenuInviteRequest", 0.5f, EHandle(target), "" + plr.pev.netname, state.channel);
 			
 			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] Invitation sent to " + target.pev.netname + "\n");
 			
@@ -700,8 +698,6 @@ void callbackMenuHelp(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const C
 	}
 
 	PlayerState@ state = getPlayerState(plr);
-	
-	state.keepMenuOpen = "";
 
 	Channel@ chan = @g_channels[state.channel];
 
@@ -762,8 +758,6 @@ void callbackMenuDownload(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, con
 	}
 
 	PlayerState@ state = getPlayerState(plr);
-	
-	state.keepMenuOpen = "";
 
 	Channel@ chan = @g_channels[state.channel];
 
@@ -798,13 +792,8 @@ void openMenuRadio(EHandle h_plr) {
 	PlayerState@ state = getPlayerState(plr);
 	Channel@ chan = g_channels[state.channel]; // TODO: invalid index somehow
 	
-	state.keepMenuOpen = "openMenuRadio";
-	
-	string title = "\\y" + chan.name;
-	title += "  \\d(" + chan.getChannelListeners().size() + " listening)\\y";
-	
 	@g_menus[eidx] = CTextMenu(@callbackMenuRadio);
-	g_menus[eidx].SetTitle(title);
+	g_menus[eidx].SetTitle("\\yRadio - " + chan.name);
 
 	CBasePlayer@ dj = chan.getDj();
 	bool isDjReserved = chan.isDjReserved();
@@ -824,38 +813,8 @@ void openMenuRadio(EHandle h_plr) {
 		g_menus[eidx].AddItem("\\wInvite\\y", any("invite"));
 	}
 	
-	string label = "\\wExit\\y";
-	
-	label += "\n\n\\yCurrent DJ:\n";
-	if (dj !is null) {
-		label += "\\w" + dj.pev.netname;
-	} else if (isDjReserved) {
-		int reserveTimeLeft = int(Math.Ceil(g_djReserveTime.GetInt() - g_Engine.time));
-		label += "\\r(reserved for " + reserveTimeLeft + " seconds)";
-	} else {
-		label += "\\d(none)";
-	}
-	
-	Song@ song = chan.queue.size() > 0 ? chan.queue[0] : null;
-	
-	label += "\n\n\\yNow Playing:\n";
-	if (song !is null) {
-		label += "\\w" + song.getName() + " \\d" + formatTime(chan.getTimeLeft());
-		
-		int diff = int(TimeDifference(state.tuneTime, chan.startTime).GetTimeDifference());
-		
-		if (diff > 0) {
-			label += "\n\n\\r(desynced by " + diff + "+ seconds)\\d";
-		}
-		
-	} else {
-		label += "\\d(nothing)";
-	}
-	
-	g_menus[eidx].AddItem(label + "\\d", any("exit"));
-	
 	g_menus[eidx].Register();
-	g_menus[eidx].Open(1, 0, plr);
+	g_menus[eidx].Open(0, 0, plr);
 }
 
 void openMenuChannelSelect(EHandle h_plr) {
@@ -1036,7 +995,7 @@ void openMenuSong(EHandle h_plr, string path, int page) {
 	g_menus[eidx].Open(0, page, plr);
 }
 
-void openMenuInviteRequest(EHandle h_plr, string asker, int channel, string keepOpenHud) {
+void openMenuInviteRequest(EHandle h_plr, string asker, int channel) {
 	CBasePlayer@ plr = cast<CBasePlayer@>(h_plr.GetEntity());
 	if (plr is null) {
 		return;
@@ -1046,11 +1005,11 @@ void openMenuInviteRequest(EHandle h_plr, string asker, int channel, string keep
 	PlayerState@ state = getPlayerState(plr);
 	Channel@ chan = g_channels[channel];
 	
-	@g_menus[eidx] = CTextMenu(@callbackMenuRadio);
+	@g_menus[eidx] = CTextMenu(@callbackMenuChannelSelect);
 	g_menus[eidx].SetTitle("\\yYou're invited to listen to\nthe radio on " + g_channels[channel].name + "\n-" + asker + "\n");
 	
 	g_menus[eidx].AddItem("\\wAccept\\y", any("channel-" + channel));
-	g_menus[eidx].AddItem("\\wDecline\\y", any(keepOpenHud.Length() > 0 ? keepOpenHud : "exit"));
+	g_menus[eidx].AddItem("\\wDecline\\y", any("exit"));
 	
 	g_menus[eidx].Register();
 	g_menus[eidx].Open(0, 0, plr);
@@ -1198,12 +1157,7 @@ bool doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 			bool isEnabled = state.channel >= 0;
 	
 			if (isEnabled) {
-				if (state.keepMenuOpen.Length() > 0) {
-					state.keepMenuOpen = "";
-				} else {
-					openMenuRadio(EHandle(plr));
-				}
-				
+				openMenuRadio(EHandle(plr));
 			} else {
 				openMenuChannelSelect(EHandle(plr));
 			}
@@ -1243,7 +1197,7 @@ bool doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 						spos = " " + spos;
 					}
 					
-					g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "\n" + spos + ") " + listeners[i].pev.netname);
+					g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "\n" + spos + ") " + listeners[k].pev.netname);
 				}
 				
 				if (listeners.size() == 0) {
