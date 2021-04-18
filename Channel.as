@@ -5,7 +5,7 @@ class Channel {
 	array<Song@> queue;
 	string currentDj; // steam id
 	DateTime startTime; // time last song was started
-	bool shouldSkipSong = false;
+	string shouldSkipSong = ""; // name of player who skipped if not empty
 	
 	array<string> mapChangeListeners;
 	
@@ -14,7 +14,7 @@ class Channel {
 			return;
 		}
 		
-		if (isSongFinished() or shouldSkipSong) {
+		if (isSongFinished() or shouldSkipSong.Length() > 0) {
 			if (queue.size() > 0) {
 				queue.removeAt(0);
 			}
@@ -22,8 +22,12 @@ class Channel {
 			if (queue.size() > 0) {
 				Song@ song = queue[0];
 				string msg = "Now playing: " + song.getName();
-				if (shouldSkipSong) {
-					msg = "Song skipped. " + msg;
+				if (shouldSkipSong.Length() > 0) {
+					if (currentDj.Length() == 0) {
+						msg = "Song skipped by " + shouldSkipSong + ". " + msg;
+					} else {
+						msg = "Song skipped. " + msg;
+					}
 				}
 				announce(msg);
 				playSong(song);
@@ -31,13 +35,61 @@ class Channel {
 					CBasePlayer@ dj = getDj();
 					RelaySay(name + "|" + song.getName() + "|" + (dj !is null ? string(getDj().pev.netname) : "(none)"));
 				}
-			} else if (shouldSkipSong) {
+			} else if (shouldSkipSong.Length() > 0) {
 				stopMusic();
-				announce("Song stopped.");
+				if (currentDj.Length() > 0) {
+					announce("Song stopped by " + shouldSkipSong + ".");
+				} else {
+					announce("Song stopped.");
+				}
 			}
 			
-			shouldSkipSong = false;
+			shouldSkipSong = "";
 		}
+	}
+	
+	void updateHud(CBasePlayer@ plr, PlayerState@ state) {
+		HUDTextParams params;
+		params.effect = 0;
+		params.fadeinTime = 0;
+		params.fadeoutTime = 0.5f;
+		params.holdTime = 5.0f;
+		params.r1 = 255;
+		params.g1 = 255;
+		params.b1 = 255;
+		
+		params.x = -1;
+		params.y = 0.0001;
+		params.channel = 2;
+
+		Song@ song = getSong();
+		CBasePlayer@ dj = getDj();
+		string djName = dj !is null ? " - " + dj.pev.netname : "";
+		
+		if (isDjReserved()) {
+			int reserveTimeLeft = int(Math.Ceil(g_djReserveTime.GetInt() - g_Engine.time));
+			djName = " - Waiting " + reserveTimeLeft + "s for DJ";
+		}
+		
+		string msg = name + djName + " (" + getChannelListeners().size() + " listening)";
+		string songStr = "";
+		
+		if (song !is null) {
+			songStr = song.getName() + "  " + formatTime(getTimeLeft());
+			
+			if (isWaitingToPlaySong()) {
+				int waitingFor = shouldWaitForListeners();
+				int waitTimeLeft = int(Math.Ceil(g_listenerWaitTime.GetInt() - g_Engine.time));
+				songStr = song.getName() + "\n(waiting " + waitTimeLeft + "s for " + waitingFor + " listeners)";
+			} else {
+				int diff = int(TimeDifference(state.tuneTime, startTime).GetTimeDifference());
+				if (diff > 0) {
+					songStr += "\n(desynced by " + diff + "+ seconds)";
+				}
+			}
+		}
+		
+		g_PlayerFuncs.HudMessage(plr, params, msg + "\n" + songStr);
 	}
 	
 	bool isSongFinished() {
@@ -98,6 +150,10 @@ class Channel {
 		return getPlayerByUniqueId(currentDj);
 	}
 	
+	bool hasDj() {
+		return currentDj.Length() > 0;
+	}
+	
 	bool isDjReserved() {
 		CBasePlayer@ dj = getDj();
 		return (dj is null or !dj.IsConnected()) and currentDj.Length() > 0 and g_Engine.time < g_djReserveTime.GetInt();
@@ -155,7 +211,7 @@ class Channel {
 			
 			RelaySay(name + "|" + song.getName() + "|" + (currentDj != "" ? string(getDj().pev.netname) : "(none)"));
 		} else {
-			announce("" + plr.pev.netname + " queued: " + song.getName());
+			announce("" + plr.pev.netname + " queued: " + song.getName(), currentDj.Length() == 0 ? HUD_PRINTTALK : HUD_PRINTNOTIFY);
 		}
 
 		queue.insertLast(song);

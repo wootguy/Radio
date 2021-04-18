@@ -3,9 +3,6 @@
 #include "songloader"
 #include "util"
 
-// TODO high prio:
-// - valkries not in pack
-
 // TODO minor:
 // - search for songs
 // - kick inactive DJs (no song for long time)
@@ -13,13 +10,9 @@
 // - prevent map music playing if radio is on
 // - show who else is listening/desynced with music sprites or smth
 // - alt+tab can run twice or smth
-// - keep hud message active longer for map changes (2-4 seconds)
 // - pausefix <float> (only run once per sec)
-// - dont show queue message from djs
 // - let dj rename channel
-// - message for removing/moving in queue
-// - say who skipoped song when no dj
-// - can steal dj while waiting for one
+// - invite cooldowns should use datetime
 
 const string SONG_FILE_PATH = "scripts/plugins/Radio/songs.txt";
 const string MUSIC_PACK_PATH = "scripts/plugins/Radio/music_packs.txt";
@@ -78,52 +71,35 @@ class PlayerState {
 			lastInviteTime.get(id, inviteTime);
 		}
 	
-		float delta = g_Engine.time - inviteTime;
-		if (delta < g_inviteCooldown.GetInt()) {
-			if (int(id.Find("\\")) != -1) {
-				id = id.Replace("\\", "");
-			} else {
-				CBasePlayer@ target = getPlayerByUniqueId(id);
-				if (target !is null) {
-					id = target.pev.netname;
-				}
+		if (int(id.Find("\\")) != -1) {
+			id = id.Replace("\\", "");
+		} else {
+			CBasePlayer@ target = getPlayerByUniqueId(id);
+			if (target !is null) {
+				id = target.pev.netname;
 			}
-			
-			int waitTime = int((g_inviteCooldown.GetInt() - delta) + 0.99f);
-			g_PlayerFuncs.SayText(plr, "[Radio] Wait " + waitTime + " seconds before inviting " + id + " again.\n");
-			return true;
 		}
 		
-		return false;
+		return shouldCooldownGeneric(plr, inviteTime, g_inviteCooldown.GetInt(), "inviting " + id + " again");
 	}
 	
-	bool shouldRequestCooldown(CBasePlayer@ plr) {	
-		float delta = g_Engine.time - lastRequest;
-		if (delta < g_requestCooldown.GetInt()) {			
-			int waitTime = int((g_inviteCooldown.GetInt() - delta) + 0.99f);
-			g_PlayerFuncs.SayText(plr, "[Radio] Wait " + waitTime + " seconds before requesting another song.\n");
-			return true;
-		}
-		
-		return false;
+	bool shouldRequestCooldown(CBasePlayer@ plr) {
+		return shouldCooldownGeneric(plr, lastRequest, g_djSwapCooldown.GetInt(), "requesting another song");
 	}
 	
-	bool shouldDjToggleCooldown(CBasePlayer@ plr) {	
-		float delta = g_Engine.time - lastDjToggle;
-		if (delta < g_djSwapCooldown.GetInt()) {			
-			int waitTime = int((g_djSwapCooldown.GetInt() - delta) + 0.99f);
-			g_PlayerFuncs.SayText(plr, "[Radio] Wait " + waitTime + " seconds before toggling DJ mode again.\n");
-			return true;
-		}
-		
-		return false;
+	bool shouldDjToggleCooldown(CBasePlayer@ plr) {
+		return shouldCooldownGeneric(plr, lastDjToggle, g_djSwapCooldown.GetInt(), "toggling DJ mode again");
 	}
 	
 	bool shouldSongSkipCooldown(CBasePlayer@ plr) {	
-		float delta = g_Engine.time - lastSongSkip;
+		return shouldCooldownGeneric(plr, lastSongSkip, g_skipSongCooldown.GetInt(), "skipping another song");
+	}
+	
+	bool shouldCooldownGeneric(CBasePlayer@ plr, float lastActionTime, int cooldownTime, string actionDesc) {
+		float delta = g_Engine.time - lastActionTime;
 		if (delta < g_skipSongCooldown.GetInt()) {			
-			int waitTime = int((g_skipSongCooldown.GetInt() - delta) + 0.99f);
-			g_PlayerFuncs.SayText(plr, "[Radio] Wait " + waitTime + " seconds before skipping another song.\n");
+			int waitTime = int((cooldownTime - delta) + 0.99f);
+			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] Wait " + waitTime + " seconds before " + actionDesc + ".\n");
 			return true;
 		}
 		
@@ -320,7 +296,7 @@ void radioThink() {
 		if (state.playAfterFullyLoaded and g_player_lag_status[plr.entindex()] == LAG_NONE) {
 			state.playAfterFullyLoaded = false;
 			
-			if (g_channels[state.channel].queue.size() > 0) {
+			if (state.channel >= 0 and g_channels[state.channel].queue.size() > 0) {
 				Song@ song = g_channels[state.channel].queue[0];
 				clientCommand(plr, song.getMp3PlayCommand());
 				g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] Now playing: " + song.getName() + "\n");
@@ -329,49 +305,7 @@ void radioThink() {
 		}
 
 		if (state.showHud and state.channel >= 0) {
-			Channel@ chan = g_channels[state.channel];
-			
-			HUDTextParams params;
-			params.effect = 0;
-			params.fadeinTime = 0;
-			params.fadeoutTime = 0.5f;
-			params.holdTime = 1.0f;
-			params.r1 = 255;
-			params.g1 = 255;
-			params.b1 = 255;
-			
-			params.x = -1;
-			params.y = 0.0001;
-			params.channel = 2;
-
-			Song@ song = chan.getSong();
-			CBasePlayer@ dj = chan.getDj();
-			string djName = dj !is null ? " - " + dj.pev.netname : "";
-			
-			if (dj is null and chan.isDjReserved()) {
-				int reserveTimeLeft = int(Math.Ceil(g_djReserveTime.GetInt() - g_Engine.time));
-				djName = " - Waiting " + reserveTimeLeft + "s for DJ";
-			}
-			
-			string msg = chan.name + djName + " (" + chan.getChannelListeners().size() + " listening)";
-			string songStr = "";
-			
-			if (song !is null) {
-				songStr = song.getName() + "  " + formatTime(chan.getTimeLeft());
-				
-				if (chan.isWaitingToPlaySong()) {
-					int waitingFor = chan.shouldWaitForListeners();
-					int waitTimeLeft = int(Math.Ceil(g_listenerWaitTime.GetInt() - g_Engine.time));
-					songStr = song.getName() + "\n(waiting " + waitTimeLeft + "s for " + waitingFor + " listeners)";
-				} else {
-					int diff = int(TimeDifference(state.tuneTime, chan.startTime).GetTimeDifference());
-					if (diff > 0) {
-						songStr += "\n(desynced by " + diff + "+ seconds)";
-					}
-				}
-			}
-			
-			g_PlayerFuncs.HudMessage(plr, params, msg + "\n" + songStr);
+			g_channels[state.channel].updateHud(plr, state);
 		}
 	}
 }
@@ -451,6 +385,14 @@ void callbackMenuRadio(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const 
 		
 		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, msg + "\n");
 		clientCommand(plr, "mp3 stop");
+		
+		HUDTextParams params;
+		params.holdTime = 0.5f;
+		params.x = -1;
+		params.y = 0.0001;
+		params.channel = 2;
+		
+		g_PlayerFuncs.HudMessage(plr, params, "");
 	}
 	else if (option == "main-menu") {		
 		g_Scheduler.SetTimeout("openMenuRadio", 0.0f, EHandle(plr));
@@ -474,7 +416,7 @@ void callbackMenuRadio(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const 
 			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] No song is playing.\n");
 		}
 		else {
-			chan.shouldSkipSong = true;
+			chan.shouldSkipSong = plr.pev.netname;
 			state.lastSongSkip = g_Engine.time;
 		}
 		
@@ -490,6 +432,12 @@ void callbackMenuRadio(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const 
 	}
 	else if (option == "become-dj") {
 		CBasePlayer@ currentDj = chan.getDj();
+		
+		if (chan.isDjReserved()) {
+			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] DJ slot is reserved by someone who hasn't finished joining yet.\n");
+			g_Scheduler.SetTimeout("openMenuRadio", 0.0f, EHandle(plr));
+			return;
+		}
 		
 		if (state.shouldDjToggleCooldown(plr)) {
 			g_Scheduler.SetTimeout("openMenuRadio", 0.0f, EHandle(plr));
@@ -635,6 +583,7 @@ void callbackMenuEditQueue(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, co
 		int newSlot = slot;
 		
 		if (slot > 1) {
+			chan.announce("" + plr.pev.netname + " moved up: " + chan.queue[slot].getName(), HUD_PRINTNOTIFY);
 			Song@ temp = chan.queue[slot];
 			@chan.queue[slot] = @chan.queue[slot-1];
 			@chan.queue[slot-1] = @temp;
@@ -648,6 +597,7 @@ void callbackMenuEditQueue(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, co
 		int newSlot = slot;
 		
 		if (slot < int(chan.queue.size())-1) {
+			chan.announce("" + plr.pev.netname + " moved down: " + chan.queue[slot].getName(), HUD_PRINTNOTIFY);
 			Song@ temp = chan.queue[slot];
 			@chan.queue[slot] = @chan.queue[slot+1];
 			@chan.queue[slot+1] = @temp;
@@ -660,6 +610,8 @@ void callbackMenuEditQueue(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, co
 		int slot = atoi(option.SubString(7));
 		
 		if (slot < int(chan.queue.size())) {
+			HUD msgType = chan.hasDj() ? HUD_PRINTNOTIFY : HUD_PRINTTALK;
+			chan.announce("" + plr.pev.netname + " removed: " + chan.queue[slot].getName(), msgType);
 			chan.queue.removeAt(slot);
 		}
 		
