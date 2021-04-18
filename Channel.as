@@ -57,17 +57,6 @@ class Channel {
 		}
 	}
 	
-	void handlePlayerJoin(CBasePlayer@ joiner) {
-		string joinerId = getPlayerUniqueId(joiner);
-		
-		for (uint i = 0; i < mapChangeListeners.size(); i++) {
-			if (joinerId == mapChangeListeners[i]) {
-				mapChangeListeners.removeAt(i);
-				return;
-			}
-		}
-	}
-	
 	// returns number of listeners that haven't joined yet
 	int shouldWaitForListeners() {
 		int waitCount = 0;
@@ -75,7 +64,7 @@ class Channel {
 		if (g_Engine.time < g_listenerWaitTime.GetInt()) {
 			for (uint i = 0; i < mapChangeListeners.size(); i++) {
 				CBasePlayer@ plr = getPlayerByUniqueId(mapChangeListeners[i]);
-				if (plr is null or !plr.IsConnected()) {
+				if (plr is null or !plr.IsConnected() or g_player_lag_status[plr.entindex()] != LAG_NONE) {
 					waitCount++;
 				}
 			}

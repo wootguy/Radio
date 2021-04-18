@@ -18,7 +18,8 @@
 // - dont show queue message from djs
 // - let dj rename channel
 // - message for removing/moving in queue
-
+// - say who skipoped song when no dj
+// - can steal dj while waiting for one
 
 const string SONG_FILE_PATH = "scripts/plugins/Radio/songs.txt";
 const string MUSIC_PACK_PATH = "scripts/plugins/Radio/music_packs.txt";
@@ -41,6 +42,8 @@ array<MusicPack> g_music_packs;
 string g_music_pack_update_time;
 string g_version_check_file;
 string g_root_path;
+
+array<int> g_player_lag_status;
 
 dictionary g_level_changers; // don't restart the music for these players on level changes
 
@@ -67,6 +70,7 @@ class PlayerState {
 	bool focusHackEnabled = false;
 	bool showHud = true;
 	bool neverUsedBefore = true;
+	bool playAfterFullyLoaded = false; // should start music when this player fully loads
 	
 	bool shouldInviteCooldown(CBasePlayer@ plr, string id) {
 		float inviteTime = -9999;
@@ -159,6 +163,11 @@ class MusicPack {
 	}
 }
 
+enum LAG_STATES {
+	LAG_NONE,
+	LAG_SEVERE_MSG,
+	LAG_JOINING
+}
 
 
 void PluginInit() {
@@ -203,10 +212,13 @@ void PluginInit() {
 	
 	g_Scheduler.SetInterval("radioThink", 0.5f, -1);
 	g_Scheduler.SetInterval("radioResumeHack", 0.05f, -1);
+	
+	g_player_lag_status.resize(33);
 }
 
 void MapInit() {
 	g_Game.PrecacheGeneric(g_root_path + g_version_check_file);
+	g_Game.PrecacheGeneric(g_root_path + "classical/richard_wagner_ride_of_the_valkyries.mp3"); // forgot to add this to the music packs
 	loadSongs();
 	loadMusicPackInfo();
 	
@@ -245,6 +257,10 @@ HookReturnCode MapChange() {
 			g_channels[i].rememberListeners();
 		}
 	}
+	
+	for (uint i = 0; i < 33; i++) {
+		g_player_lag_status[i] = LAG_JOINING;
+	}
 
 	return HOOK_CONTINUE;
 }
@@ -255,14 +271,7 @@ HookReturnCode ClientJoin(CBasePlayer@ plr) {
 	
 	if (!g_level_changers.exists(id)) {
 		if (state.channel >= 0) {
-			if (g_channels[state.channel].queue.size() > 0) {
-				Song@ song = g_channels[state.channel].queue[0];
-				clientCommand(plr, song.getMp3PlayCommand());
-				g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] Now playing: " + song.getName() + "\n");
-				state.tuneTime = DateTime();
-			}
-			
-			g_channels[state.channel].handlePlayerJoin(plr);
+			state.playAfterFullyLoaded = true;
 		}
 		
 		g_level_changers[id] = true;
@@ -292,6 +301,8 @@ HookReturnCode ClientLeave(CBasePlayer@ plr) {
 }
 
 void radioThink() {	
+	loadCrossPluginLoadState();
+	
 	for (uint i = 0; i < g_channels.size(); i++) {
 		g_channels[i].think();
 	}
@@ -305,6 +316,17 @@ void radioThink() {
 		}
 		
 		PlayerState@ state = getPlayerState(plr);
+		
+		if (state.playAfterFullyLoaded and g_player_lag_status[plr.entindex()] == LAG_NONE) {
+			state.playAfterFullyLoaded = false;
+			
+			if (g_channels[state.channel].queue.size() > 0) {
+				Song@ song = g_channels[state.channel].queue[0];
+				clientCommand(plr, song.getMp3PlayCommand());
+				g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] Now playing: " + song.getName() + "\n");
+				state.tuneTime = DateTime();
+			}
+		}
 
 		if (state.showHud and state.channel >= 0) {
 			Channel@ chan = g_channels[state.channel];
@@ -351,7 +373,6 @@ void radioThink() {
 			
 			g_PlayerFuncs.HudMessage(plr, params, msg + "\n" + songStr);
 		}
-
 	}
 }
 
@@ -376,6 +397,23 @@ void radioResumeHack() {
 	}
 }
 
+void loadCrossPluginLoadState() {
+	CBaseEntity@ afkEnt = g_EntityFuncs.FindEntityByTargetname(null, "PlayerStatusPlugin");
+	
+	if (afkEnt is null) {
+		return;
+	}
+	
+	CustomKeyvalues@ customKeys = afkEnt.GetCustomKeyvalues();
+	
+	for ( int i = 1; i <= g_Engine.maxClients; i++ )
+	{
+		CustomKeyvalue key = customKeys.GetKeyvalue("$i_state" + i);
+		if (key.Exists()) {
+			g_player_lag_status[i] = key.GetInteger();
+		}
+	}
+}
 
 
 void callbackMenuRadio(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const CTextMenuItem@ item) {
