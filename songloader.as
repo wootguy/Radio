@@ -82,6 +82,8 @@ void loadMusicPackInfo() {
 					g_music_pack_update_time = value;
 				} else if (key == "version_check_file") {
 					g_version_check_file = value;
+					g_version_check_spr = g_version_check_file;
+					g_version_check_spr = g_version_check_spr.Replace(".mp3", ".spr");
 				} else if (key == "root_path") {
 					g_root_path = value;
 				}

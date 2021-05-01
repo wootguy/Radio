@@ -4,16 +4,23 @@
 #include "songloader"
 #include "util"
 
-// TODO minor:
+// TODO:
 // - search for songs
 // - kick inactive DJs (no song for long time)
 // - invite with text message instead of menu
-// - prevent map music playing if radio is on
 // - show who else is listening/desynced with music sprites or smth
 // - alt+tab can run twice or smth
 // - pausefix <float> (only run once per sec)
 // - let dj rename channel
 // - invite cooldowns should use datetime
+
+// Bugs that can't be fixed:
+// prevent map music playing if radio is on:
+//   - Can't stop ambient_music per player (user-only flag enabled after it spawns)
+//   - Can't stop the music with StopSound or PlaySound on the MUSIC channel
+//   - Custom entity can't play music at an offset for when someone joins late
+//   - Enabling user-only flag and adding custom logic will break playing at an offset
+//   - No way to know how often to send cl_stopsound without reading sound files to get duration
 
 const string SONG_FILE_PATH = "scripts/plugins/Radio/songs.txt";
 const string MUSIC_PACK_PATH = "scripts/plugins/Radio/music_packs.txt";
@@ -37,6 +44,7 @@ FileNode g_root_folder;
 array<MusicPack> g_music_packs;
 string g_music_pack_update_time;
 string g_version_check_file;
+string g_version_check_spr;
 string g_root_path;
 
 array<int> g_player_lag_status;
@@ -67,6 +75,7 @@ class PlayerState {
 	bool showHud = true;
 	bool neverUsedBefore = true;
 	bool playAfterFullyLoaded = false; // should start music when this player fully loads
+	bool sawUpdateNotification = false; // only show the UPDATE NOW sprite once per map
 	
 	bool shouldInviteCooldown(CBasePlayer@ plr, string id) {
 		float inviteTime = -9999;
@@ -100,7 +109,7 @@ class PlayerState {
 	
 	bool shouldCooldownGeneric(CBasePlayer@ plr, float lastActionTime, int cooldownTime, string actionDesc) {
 		float delta = g_Engine.time - lastActionTime;
-		if (delta < g_skipSongCooldown.GetInt()) {			
+		if (delta < cooldownTime) {			
 			int waitTime = int((cooldownTime - delta) + 0.99f);
 			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] Wait " + waitTime + " seconds before " + actionDesc + ".\n");
 			return true;
@@ -197,7 +206,10 @@ void PluginInit() {
 
 void MapInit() {
 	g_Game.PrecacheGeneric(g_root_path + g_version_check_file);
-	g_Game.PrecacheGeneric(g_root_path + "classical/richard_wagner_ride_of_the_valkyries.mp3"); // forgot to add this to the music packs
+	
+	g_Game.PrecacheGeneric("../" + g_root_path + g_version_check_spr);
+	g_Game.PrecacheModel("../" + g_root_path + g_version_check_spr);
+	
 	loadSongs();
 	loadMusicPackInfo();
 	
@@ -210,6 +222,7 @@ void MapInit() {
 		state.lastRequest = -9999;
 		state.lastDjToggle = -9999;
 		state.lastSongSkip = -9999;
+		state.sawUpdateNotification = false;
 	}
 }
 
@@ -307,19 +320,25 @@ void radioThink() {
 		
 		PlayerState@ state = getPlayerState(plr);
 		
+		if (state.channel < 0) {
+			continue;
+		}
+		
+		Channel@ chan = g_channels[state.channel];
+		
 		if (state.playAfterFullyLoaded and g_player_lag_status[plr.entindex()] == LAG_NONE) {
 			state.playAfterFullyLoaded = false;
 			
-			if (state.channel >= 0 and g_channels[state.channel].queue.size() > 0) {
-				Song@ song = g_channels[state.channel].queue[0];
+			if (chan.queue.size() > 0) {
+				Song@ song = chan.queue[0];
 				clientCommand(plr, song.getMp3PlayCommand());
 				g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] Now playing: " + song.getName() + "\n");
 				state.tuneTime = DateTime();
 			}
 		}
 
-		if (state.showHud and state.channel >= 0) {
-			g_channels[state.channel].updateHud(plr, state);
+		if (state.showHud) {
+			chan.updateHud(plr, state);
 		}
 	}
 }

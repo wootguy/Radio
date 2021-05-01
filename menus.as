@@ -47,7 +47,7 @@ void callbackMenuRadio(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const 
 		g_Scheduler.SetTimeout("openMenuRadio", 0.0f, EHandle(plr));
 	}
 	else if (option == "add-song") {
-		g_Scheduler.SetTimeout("openMenuSong", 0.0f, EHandle(plr), "", 0);
+		g_Scheduler.SetTimeout("openMenuSong", 0.0f, EHandle(plr), "", 0, "");
 	}
 	else if (option == "skip-song") {
 		if (!canDj) {
@@ -174,7 +174,14 @@ void callbackMenuSong(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const C
 	
 	if (option.Find("search:") == 0) {
 		string path = option.Length() > 7 ? option.SubString(7) : "";
-		g_Scheduler.SetTimeout("openMenuSong", 0.0f, EHandle(plr), path, 0);
+		g_Scheduler.SetTimeout("openMenuSong", 0.0f, EHandle(plr), path, 0, "");
+	}
+	else if (option.Find("search-up:") == 0) {
+		array<string> parts = option.Split(":");
+		string childPath = parts[1];
+		string path = parts[2];
+		
+		g_Scheduler.SetTimeout("openMenuSong", 0.0f, EHandle(plr), path, 0, childPath);
 	}
 	else if (option.Find("play:") == 0) {
 		array<string> parts = option.Split(":");
@@ -198,7 +205,7 @@ void callbackMenuSong(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const C
 			chan.queueSong(plr, song);
 		}
 		
-		g_Scheduler.SetTimeout("openMenuSong", 0.0f, EHandle(plr), parentPath, page);
+		g_Scheduler.SetTimeout("openMenuSong", 0.0f, EHandle(plr), parentPath, page, "");
 	}
 	else if (option == "main-menu") {		
 		g_Scheduler.SetTimeout("openMenuRadio", 0.0f, EHandle(plr));
@@ -422,6 +429,61 @@ void callbackMenuDownload(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, con
 
 
 
+// Will show an "UPDATE NOW!!!!" sprite if the player doesn't have the latest version of the pack.
+// When installing the new pack, the sprite file is overwritten with an invisble sprite.
+void showUpdateSprite(EHandle h_plr, int stage) {
+	CBasePlayer@ plr = cast<CBasePlayer@>(h_plr.GetEntity());
+	if (plr is null) {
+		return;
+	}
+	
+	HUDSpriteParams params;
+	params.channel = 0;
+	params.spritename = "../" + g_root_path + g_version_check_spr;
+	params.flags = HUD_SPR_MASKED | HUD_ELEM_ABSOLUTE_X | HUD_ELEM_SCR_CENTER_X;
+	params.holdTime = 99999.0f;
+	params.color1 = RGBA( 255, 255, 255, 255 );
+	params.channel = 0;
+	params.frame = 0;
+	params.x = 0;
+	params.y = 0.15;
+	
+	params.color2 = RGBA( 255, 0, 255, 255 );
+	params.effect = HUD_EFFECT_COSINE;
+	params.fxTime = 0.5f;
+	params.holdTime = 6.5f;
+	params.fadeoutTime = 0.5f;
+	
+	PlayerState@ state = getPlayerState(plr);	
+	state.sawUpdateNotification = true;
+	
+	if (stage == 1) {
+		g_PlayerFuncs.HudCustomSprite(plr, params);
+		return;
+	}
+	
+	if (stage == 0) {
+		params.holdTime = 5.0f;
+		params.fadeinTime = 0.5f;
+		params.fadeoutTime = 0.5f;
+		params.effect = 0;
+		params.fxTime = 0;
+		params.framerate = 15.0f;
+		params.numframes = 255;
+		params.frame = 1;
+		
+		params.channel = 1;
+		params.x = 150;
+		g_PlayerFuncs.HudCustomSprite(plr, params);
+		
+		params.channel = 2;
+		params.x = -150;
+		g_PlayerFuncs.HudCustomSprite(plr, params);
+	
+		g_Scheduler.SetTimeout("showUpdateSprite", 0.2f, h_plr, 1);
+	}
+}
+
 void openMenuRadio(EHandle h_plr) {
 	CBasePlayer@ plr = cast<CBasePlayer@>(h_plr.GetEntity());
 	if (plr is null) {
@@ -451,6 +513,12 @@ void openMenuRadio(EHandle h_plr) {
 	
 	g_menus[eidx].Register();
 	g_menus[eidx].Open(0, 0, plr);
+	
+	// Only show the update notification once per map, because it would be confusing
+	// to see this sprite again after updating the pack (it won't be replaced until level change)
+	if (!state.sawUpdateNotification) {
+		g_Scheduler.SetTimeout("showUpdateSprite", 0.2f, h_plr, 0);
+	}
 }
 
 void openMenuChannelSelect(EHandle h_plr) {
@@ -551,7 +619,7 @@ void openMenuEditQueue(EHandle h_plr, int selectedSlot) {
 	g_menus[eidx].Open(0, 0, plr);
 }
 
-void openMenuSong(EHandle h_plr, string path, int page) {
+void openMenuSong(EHandle h_plr, string path, int page, string lastChild) {
 	CBasePlayer@ plr = cast<CBasePlayer@>(h_plr.GetEntity());
 	if (plr is null) {
 		return;
@@ -580,12 +648,13 @@ void openMenuSong(EHandle h_plr, string path, int page) {
 	
 	if (path != "") {
 		string upDir = getParentFolder(path);
-		upCommand = "search:" + upDir;
+		upCommand = "search-up:" + node.name + ":" + upDir;
 	}
 	
 	g_menus[eidx].AddItem("\\w..\\y", any(upCommand));
 	
 	bool moreThanOnePage = (node.children.size()+1) > 9;
+	bool wentUp = lastChild.Length() > 0;
 	
 	for (uint i = 0; i < node.children.size(); i++) {
 		FileNode@ child = node.children[i];
@@ -593,6 +662,8 @@ void openMenuSong(EHandle h_plr, string path, int page) {
 		if (moreThanOnePage and i != 0 && i % 6 == 0) {
 			g_menus[eidx].AddItem("\\w..\\y", any(upCommand));
 		}
+		
+		int itemPage = moreThanOnePage ? (i / 6) : 0;
 		
 		if (child.file !is null) {
 			Song@ song = @child.file;
@@ -620,9 +691,11 @@ void openMenuSong(EHandle h_plr, string path, int page) {
 				label += " \\d(in queue)";
 			}
 			
-			int itemPage = moreThanOnePage ? (i / 6) : 0;
 			g_menus[eidx].AddItem(label + "\\y", any("play:" + itemPage + ":" + song.path));
 		} else {
+			if (wentUp and lastChild == child.name) {
+				page = itemPage;
+			}
 			g_menus[eidx].AddItem("\\w" + child.name + "/\\y", any("search:" + prefix + child.name));
 		}
 	}

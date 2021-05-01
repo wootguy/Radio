@@ -209,7 +209,7 @@ class Channel {
 				announce("Now playing: " + song.getName());
 			}
 			
-			RelaySay(name + "|" + song.getName() + "|" + (currentDj != "" ? string(getDj().pev.netname) : "(none)"));
+			RelaySay(name + "|" + song.getName() + "|" + (getDj() !is null ? string(getDj().pev.netname) : "(none)"));
 		} else {
 			announce("" + plr.pev.netname + " queued: " + song.getName(), currentDj.Length() == 0 ? HUD_PRINTTALK : HUD_PRINTNOTIFY);
 		}
