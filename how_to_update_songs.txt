@@ -1,14 +1,14 @@
 1) Run MP3Gain with 105.0 target volume to sync all song volumes
-2) run songlist.py
-3) run pack_songs.py (change vars inside first, namely the version check file)
-4) rename the FAILURE version_check file on the server (use same version number from previous step)
-5) Zip each pack with Store compression and upload somewhere.
-6) update all musicPack* CVars in server.cfg
-7) music should update on level change, or you can reload the plugin if impatient.
+2) run pack_songs.py (change vars inside first, namely the version check file)
+3) Zip each pack with Store compression and upload somewhere.
+4) run songlist.py and update music_packs.txt
+5) copy songs.txt and music_packs.txt to the server
+6) rename the FAILURE version_check/ files on the server (use same version number as in the packs)
+7) wait for end of level to reload plugin so that version checking works
 
 How version check works:
 The server will send/precache the FAILURE file to clients who don't have the music pack.
-When installing the music pack, the FAILURE file is overrwritten with the SUCCESS file
-in the pack. Just be careful not to get this backwards.
+When installing the music pack, the FAILURE file is overrwritten with the SUCCESS file in the pack.
+Just be careful not to get this backwards.
 
 https://speakabo.com/text-to-speech/

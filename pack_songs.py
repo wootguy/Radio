@@ -1,11 +1,13 @@
 import os, sys, datetime, shutil
 from threading import Thread
 
-parallel_thread_count = 8
-src_dir = '../../../../svencoop_addon/mp3/radio_twlz_high/'
+src_dir = '../../../../svencoop_addon/mp3/radio_twlz/'
 readme = 'radio_twlz_readme.txt'
 version_file_src = 'version_check_success.mp3'
-version_file_dst = 'version_check/v2.mp3'
+version_file_dst = 'version_check/v3.mp3'
+zip_prog = 'C:\\Program Files\\7-Zip\\7zG.exe'
+pack_name = "radio_twlz_%s" % datetime.date.today().strftime("%Y_%m_%d")
+parallel_thread_count = 8
 
 target_level = -1 # -1 = convert to all quality levels
 
@@ -18,6 +20,8 @@ quality_levels = [
 # ffmpeg -i dave_rogers_deja_vu.mp3 -codec:a libmp3lame -b:a 8k -ac 1 -ar 8000 -af "lowpass=f=1600" -y test.mp3
 # ffmpeg -i daft_punk_derezzed.mp3 -codec:a libmp3lame -qscale:a 8 -ac 1 -ar 44100 -y test.mp3
 
+t1 = datetime.datetime.now()
+
 output_roots = []
 output_dirs = []
 for level in range(0, len(quality_levels)):
@@ -29,7 +33,6 @@ for level in range(0, len(quality_levels)):
 		os.makedirs(output_dir)
 
 all_jobs = []
-
 for root, folders, files in os.walk(src_dir):
 	for filename in files:
 		in_path = os.path.join(root, filename).replace("\\", "/")
@@ -67,9 +70,6 @@ def convert_job(id):
 		except IndexError as e:
 			break
 
-
-t1 = datetime.datetime.now()
-
 all_threads = []
 
 for i in range(0, parallel_thread_count):
@@ -87,8 +87,24 @@ for dir in output_dirs:
 	dst = os.path.join(dir, version_file_dst)
 	if not os.path.exists(os.path.dirname(dst)):
 		os.makedirs(os.path.dirname(dst))
+		
 	shutil.copy(version_file_src, dst)
+	shutil.copy(version_file_src.replace(".mp3", ".spr"), dst.replace(".mp3", ".spr"))
+
+if os.path.exists(zip_prog):
+	cur_dir = os.getcwd()
 	
+	for idx, dir in enumerate(output_roots):
+		output_file_name = "%s_%s.zip" % (pack_name, "q%s" % (idx+1))
+		os.chdir(dir)
+		cmd = '"%s" a -tzip -mx=0 %s *' % (zip_prog, output_file_name)
+		os.system(cmd)
+		os.chdir(cur_dir)
+		if os.path.exists(output_file_name):
+			os.remove(output_file_name)
+		os.rename(os.path.join(dir, output_file_name), output_file_name)
+else:
+	print("Skipping archive creation because this path does not exist: %s" % zip_prog)
 
 t2 = datetime.datetime.now()
 print("\nFinished in: %s\n" % (t2 - t1))
