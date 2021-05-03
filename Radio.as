@@ -3,6 +3,7 @@
 #include "menus"
 #include "songloader"
 #include "util"
+#include "target_cdaudio_radio"
 
 // TODO:
 // - search for songs
@@ -13,6 +14,7 @@
 // - pausefix <float> (only run once per sec)
 // - let dj rename channel
 // - invite cooldowns should use datetime
+// - didn't show who stopped the song with no dj
 
 // Bugs that can't be fixed:
 // prevent map music playing if radio is on:
@@ -207,8 +209,7 @@ void PluginInit() {
 void MapInit() {
 	g_Game.PrecacheGeneric(g_root_path + g_version_check_file);
 	
-	g_Game.PrecacheGeneric("../" + g_root_path + g_version_check_spr);
-	g_Game.PrecacheModel("../" + g_root_path + g_version_check_spr);
+	g_Game.PrecacheModel(g_root_path + g_version_check_spr);
 	
 	loadSongs();
 	loadMusicPackInfo();
@@ -224,6 +225,31 @@ void MapInit() {
 		state.lastSongSkip = -9999;
 		state.sawUpdateNotification = false;
 	}
+}
+
+void MapActivate() {
+	g_CustomEntityFuncs.RegisterCustomEntity( "target_cdaudio_radio", "target_cdaudio_radio" );
+	
+	int replaced = 0;
+	
+	CBaseEntity@ cdaudio = null;
+	do {
+		@cdaudio = g_EntityFuncs.FindEntityByClassname(cdaudio, "target_cdaudio"); 
+
+		if (cdaudio !is null)
+		{
+			dictionary keys;
+			keys["origin"] = cdaudio.pev.origin.ToString();
+			keys["targetname"] = string(cdaudio.pev.targetname);
+			keys["health"] =  "" + cdaudio.pev.health;
+			CBaseEntity@ newent = g_EntityFuncs.CreateEntity("target_cdaudio_radio", keys, true);
+		
+			g_EntityFuncs.Remove(cdaudio);
+			replaced++;
+		}
+	} while (cdaudio !is null);
+	
+	println("[Radio] Replaced " + replaced + " trigger_cdaudio entities with trigger_cdaudio_radio");
 }
 
 HookReturnCode MapChange() {
