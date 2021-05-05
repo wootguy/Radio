@@ -4,6 +4,7 @@
 #include "songloader"
 #include "util"
 #include "target_cdaudio_radio"
+#include "ambient_music_radio"
 
 // TODO:
 // - search for songs
@@ -15,14 +16,7 @@
 // - let dj rename channel
 // - invite cooldowns should use datetime
 // - didn't show who stopped the song with no dj
-
-// Bugs that can't be fixed:
-// prevent map music playing if radio is on:
-//   - Can't stop ambient_music per player (user-only flag enabled after it spawns)
-//   - Can't stop the music with StopSound or PlaySound on the MUSIC channel
-//   - Custom entity can't play music at an offset for when someone joins late
-//   - Enabling user-only flag and adding custom logic will break playing at an offset
-//   - No way to know how often to send cl_stopsound without reading sound files to get duration
+// - read volume level from ambient_music when scripts are able to read it from the bsp
 
 const string SONG_FILE_PATH = "scripts/plugins/Radio/songs.txt";
 const string MUSIC_PACK_PATH = "scripts/plugins/Radio/music_packs.txt";
@@ -37,6 +31,7 @@ CCVar@ g_maxQueue;
 CCVar@ g_channelCount;
 
 CClientCommand _radio("radio", "radio commands", @consoleCmd );
+CClientCommand _radio2("radiodbg", "radio commands", @consoleCmd );
 
 dictionary g_player_states;
 array<Channel> g_channels;
@@ -118,6 +113,10 @@ class PlayerState {
 		}
 		
 		return false;
+	}
+	
+	bool isRadioListener() {
+		return channel >= 0 and g_channels[channel].queue.size() > 0;
 	}
 }
 
@@ -227,10 +226,14 @@ void MapInit() {
 	}
 }
 
+int g_replaced_cdaudio = 0;
+int g_replaced_music = 0;
 void MapActivate() {
 	g_CustomEntityFuncs.RegisterCustomEntity( "target_cdaudio_radio", "target_cdaudio_radio" );
+	g_CustomEntityFuncs.RegisterCustomEntity( "AmbientMusicRadio::ambient_music_radio", "ambient_music_radio" );
 	
-	int replaced = 0;
+	g_replaced_cdaudio = 0;
+	g_replaced_music = 0;
 	
 	CBaseEntity@ cdaudio = null;
 	do {
@@ -245,11 +248,32 @@ void MapActivate() {
 			CBaseEntity@ newent = g_EntityFuncs.CreateEntity("target_cdaudio_radio", keys, true);
 		
 			g_EntityFuncs.Remove(cdaudio);
-			replaced++;
+			g_replaced_cdaudio++;
 		}
 	} while (cdaudio !is null);
 	
-	println("[Radio] Replaced " + replaced + " trigger_cdaudio entities with trigger_cdaudio_radio");
+	println("[Radio] Replaced " + g_replaced_cdaudio + " trigger_cdaudio entities with trigger_cdaudio_radio");
+	
+	CBaseEntity@ music = null;
+	do {
+		@music = g_EntityFuncs.FindEntityByClassname(music, "ambient_music"); 
+
+		if (music !is null)
+		{
+			dictionary keys;
+			keys["origin"] = music.pev.origin.ToString();
+			keys["targetname"] = string(music.pev.targetname);
+			keys["message"] =  "" + music.pev.message;
+			keys["spawnflags"] =  "" + music.pev.spawnflags;
+			//keys["volume"] =  "" + music.pev.volume; // Can't do this, so just assuming it's always max volume
+			CBaseEntity@ newent = g_EntityFuncs.CreateEntity("ambient_music_radio", keys, true);
+		
+			g_EntityFuncs.Remove(music);
+			g_replaced_music++;
+		}
+	} while (music !is null);
+	
+	println("[Radio] Replaced " + g_replaced_music + " ambient_music entities with ambient_music_radio");
 }
 
 HookReturnCode MapChange() {
@@ -466,6 +490,11 @@ void showConsoleFaq(CBasePlayer@ plr, bool showChatMessage) {
 bool doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 	bool isAdmin = g_PlayerFuncs.AdminLevel(plr) >= ADMIN_YES;
 	PlayerState@ state = getPlayerState(plr);
+	
+	if (args.ArgC() > 0 && args[0] == ".radiodbg") {
+		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] replaced " + g_replaced_cdaudio + " cd audios.\n");
+		return true;
+	}
 	
 	if (args.ArgC() > 0 && args[0] == ".radio") {
 	

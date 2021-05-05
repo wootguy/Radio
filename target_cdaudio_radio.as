@@ -52,9 +52,15 @@ class target_cdaudio_radio : ScriptBaseEntity
 			
 			PlayerState@ state = getPlayerState(plr);
 		
-			if (state.channel >= 0 and g_channels[state.channel].queue.size() > 0) {
+			if (state.isRadioListener()) {
 				g_PlayerFuncs.ClientPrint(plr, HUD_PRINTNOTIFY, "[Radio] suppressed map music: " + soundFile + "\n");
 				continue;
+			} else {
+				string debug = " (" + state.channel + ")";
+				if (state.channel >= 0) {
+					debug = " (" + state.channel + " " + g_channels[state.channel].queue.size() + ")";
+				}
+				g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "[Radio] NOT suppressing map music: " + soundFile + debug + "\n");
 			}
 			
 			// using "mp3 <file>" because "cd #" is blocked by cl_filterstuffcmd
@@ -65,4 +71,4 @@ class target_cdaudio_radio : ScriptBaseEntity
 			}
 		}
 	}
-};
+}

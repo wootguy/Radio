@@ -42,6 +42,8 @@ void callbackMenuRadio(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const 
 		params.channel = 2;
 		
 		g_PlayerFuncs.HudMessage(plr, params, "");
+		
+		AmbientMusicRadio::toggleMapMusic(plr, true);
 	}
 	else if (option == "main-menu") {		
 		g_Scheduler.SetTimeout("openMenuRadio", 0.0f, EHandle(plr));
@@ -148,11 +150,15 @@ void callbackMenuChannelSelect(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber
 			g_channels[oldChannel].handlePlayerLeave(plr);
 		}
 		
-		if (g_channels[state.channel].queue.size() > 0) {
+		bool musicIsPlaying = g_channels[state.channel].queue.size() > 0;
+		
+		if (musicIsPlaying) {
 			clientCommand(plr, g_channels[state.channel].queue[0].getMp3PlayCommand());
 		} else {
 			clientCommand(plr, "mp3 stop");
 		}
+		
+		AmbientMusicRadio::toggleMapMusic(plr, !musicIsPlaying);
 		
 		g_channels[state.channel].announce("" + plr.pev.netname + " tuned in.", HUD_PRINTNOTIFY, plr);
 		state.tuneTime = DateTime();
