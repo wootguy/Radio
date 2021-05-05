@@ -186,10 +186,20 @@ class Channel {
 	void playSong(Song@ song) {
 		listenerCommand(song.getMp3PlayCommand());
 		startTime = DateTime();
+		
+		array<CBasePlayer@> listeners = getChannelListeners();
+		for (uint i = 0; i < listeners.size(); i++) {
+			AmbientMusicRadio::toggleMapMusic(listeners[i], false);
+		}
 	}
 	
 	void stopMusic() {
 		listenerCommand("mp3 stop");
+
+		array<CBasePlayer@> listeners = getChannelListeners();
+		for (uint i = 0; i < listeners.size(); i++) {
+			AmbientMusicRadio::toggleMapMusic(listeners[i], true);
+		}
 	}
 	
 	bool queueSong(CBasePlayer@ plr, Song@ song) {
