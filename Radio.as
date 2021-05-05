@@ -46,8 +46,6 @@ string g_root_path;
 
 array<int> g_player_lag_status;
 
-dictionary g_level_changers; // don't restart the music for these players on level changes
-
 // Menus need to be defined globally when the plugin is loaded or else paging doesn't work.
 // Each player needs their own menu or else paging breaks when someone else opens the menu.
 // These also need to be modified directly (not via a local var reference).
@@ -184,17 +182,6 @@ void PluginInit() {
 		g_channels[i].id = i;
 	}
 	
-	for ( int i = 1; i <= g_Engine.maxClients; i++ )
-	{
-		CBasePlayer@ plr = g_PlayerFuncs.FindPlayerByIndex(i);
-		
-		if (plr is null or !plr.IsConnected()) {
-			continue;
-		}
-		
-		g_level_changers[getPlayerUniqueId(plr)] = true;
-	}
-	
 	g_root_folder.name = g_root_path;
 	loadSongs();
 	loadMusicPackInfo();
@@ -310,14 +297,7 @@ HookReturnCode MapChange() {
 HookReturnCode ClientJoin(CBasePlayer@ plr) {
 	PlayerState@ state = getPlayerState(plr);
 	string id = getPlayerUniqueId(plr);
-	
-	if (!g_level_changers.exists(id)) {
-		if (state.channel >= 0) {
-			state.playAfterFullyLoaded = true;
-		}
-		
-		g_level_changers[id] = true;
-	}
+	state.playAfterFullyLoaded = true;
 	
 	// always doing this in case someone left during a level change, preventing the value from resetting
 	// TODO: actually can't do this because it cranks volume up if a fadeout is currently active
@@ -329,9 +309,6 @@ HookReturnCode ClientJoin(CBasePlayer@ plr) {
 
 HookReturnCode ClientLeave(CBasePlayer@ plr) {
 	PlayerState@ state = getPlayerState(plr);
-	
-	// TODO: this won't trigger for players who leave during level changes
-	g_level_changers.delete(getPlayerUniqueId(plr));
 	
 	if (state.channel >= 0) {
 		if (g_channels[state.channel].currentDj == getPlayerUniqueId(plr)) {
@@ -370,25 +347,22 @@ void radioThink() {
 		
 		PlayerState@ state = getPlayerState(plr);
 		
-		if (state.channel < 0) {
-			continue;
-		}
-		
-		Channel@ chan = g_channels[state.channel];
-		
 		if (state.playAfterFullyLoaded and g_player_lag_status[plr.entindex()] == LAG_NONE) {
+			println("Playing music for fully loaded player: " + plr.pev.netname);
 			state.playAfterFullyLoaded = false;
 			
-			if (chan.queue.size() > 0) {
-				Song@ song = chan.queue[0];
+			if (state.isRadioListener()) {
+				Song@ song = g_channels[state.channel].queue[0];
 				clientCommand(plr, song.getMp3PlayCommand());
 				g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] Now playing: " + song.getName() + "\n");
 				state.tuneTime = DateTime();
+			} else {
+				AmbientMusicRadio::toggleMapMusic(plr, true);
 			}
 		}
 
-		if (state.showHud) {
-			chan.updateHud(plr, state);
+		if (state.isRadioListener() and state.showHud) {
+			g_channels[state.channel].updateHud(plr, state);
 		}
 	}
 }
