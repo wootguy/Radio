@@ -6,23 +6,6 @@ const int FL_START_SILENT = 1;
 const int FL_LOOP = 2;
 const int FL_ACTIVATOR_ONLY = 4;
 
-bool g_hook_registered = false;
-
-HookReturnCode PlayerSpawn(CBasePlayer@ plr) {
-	CBaseEntity@ ent = null;
-	do {
-		@ent = g_EntityFuncs.FindEntityByClassname(ent, "ambient_music_radio"); 
-
-		if (ent !is null)
-		{
-			ambient_music_radio@ music = cast<ambient_music_radio@>(CastToScriptClass(ent));
-			music.sync(plr);
-		}
-	} while (ent !is null);
-	
-	return HOOK_CONTINUE;
-}
-
 void toggleMapMusic(CBasePlayer@ plr, bool toggleOn) {
 	CBaseEntity@ ent = null;
 	do {
@@ -52,11 +35,6 @@ class ambient_music_radio : ScriptBaseEntity
 		
 		if (pev.spawnflags & FL_START_SILENT == 0) {
 			play(null);
-		}
-		
-		if (!g_hook_registered) {
-			g_Hooks.RegisterHook(Hooks::Player::PlayerSpawn, @PlayerSpawn);
-			g_hook_registered = true;
 		}
 	}
 	
