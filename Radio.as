@@ -46,6 +46,8 @@ string g_root_path;
 
 array<int> g_player_lag_status;
 
+dictionary g_level_changers; // don't restart the music for these players on level changes
+
 // Menus need to be defined globally when the plugin is loaded or else paging doesn't work.
 // Each player needs their own menu or else paging breaks when someone else opens the menu.
 // These also need to be modified directly (not via a local var reference).
@@ -182,6 +184,17 @@ void PluginInit() {
 		g_channels[i].id = i;
 	}
 	
+	for ( int i = 1; i <= g_Engine.maxClients; i++ )
+	{
+		CBasePlayer@ plr = g_PlayerFuncs.FindPlayerByIndex(i);
+		
+		if (plr is null or !plr.IsConnected()) {
+			continue;
+		}
+		
+		g_level_changers[getPlayerUniqueId(plr)] = true;
+	}
+	
 	g_root_folder.name = g_root_path;
 	loadSongs();
 	loadMusicPackInfo();
@@ -297,7 +310,14 @@ HookReturnCode MapChange() {
 HookReturnCode ClientJoin(CBasePlayer@ plr) {
 	PlayerState@ state = getPlayerState(plr);
 	string id = getPlayerUniqueId(plr);
-	state.playAfterFullyLoaded = true;
+	
+	if (!g_level_changers.exists(id)) {
+		if (state.channel >= 0) {
+			state.playAfterFullyLoaded = true;
+		}
+		
+		g_level_changers[id] = true;
+	}
 	
 	// always doing this in case someone left during a level change, preventing the value from resetting
 	// TODO: actually can't do this because it cranks volume up if a fadeout is currently active
@@ -309,6 +329,9 @@ HookReturnCode ClientJoin(CBasePlayer@ plr) {
 
 HookReturnCode ClientLeave(CBasePlayer@ plr) {
 	PlayerState@ state = getPlayerState(plr);
+	
+	// TODO: this won't trigger for players who leave during level changes
+	g_level_changers.delete(getPlayerUniqueId(plr));
 	
 	if (state.channel >= 0) {
 		if (g_channels[state.channel].currentDj == getPlayerUniqueId(plr)) {
