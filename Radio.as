@@ -7,7 +7,6 @@
 #include "ambient_music_radio"
 
 // TODO:
-// - search for songs
 // - kick inactive DJs (no song for long time)
 // - invite with text message instead of menu
 // - show who else is listening/desynced with music sprites or smth
@@ -17,6 +16,7 @@
 // - invite cooldowns should use datetime
 // - didn't show who stopped the song with no dj
 // - read volume level from ambient_music when scripts are able to read it from the bsp
+// - play on connect if first join
 
 const string SONG_FILE_PATH = "scripts/plugins/Radio/songs.txt";
 const string MUSIC_PACK_PATH = "scripts/plugins/Radio/music_packs.txt";
@@ -126,7 +126,9 @@ class Song {
 	string path;
 	uint lengthMillis; // duration in milliseconds
 	
-	string getName() {
+	string searchName; // cached version of getName().ToLowercase() for speed
+	
+	string getName() const {
 		return artist + " - " + title;
 	}
 	
@@ -353,6 +355,24 @@ HookReturnCode ClientSay( SayParameters@ pParams ) {
 	return HOOK_CONTINUE;
 }
 
+array<Song@> searchSongs(string searchStr) {
+	array<Song@> results;
+	searchStr = searchStr.ToLowercase();
+	
+	for (uint i = 0; i < g_songs.size(); i++) {
+		Song@ song = g_songs[i];
+		if (int(song.searchName.Find(searchStr)) != -1) {
+			results.insertLast(song);
+		}
+	}
+	
+	if (results.size() > 0) {
+		results.sort(function(a,b) { return a.searchName < b.searchName; });
+	}
+	
+	return results;
+}
+
 void radioThink() {	
 	loadCrossPluginLoadState();
 	
@@ -432,6 +452,7 @@ void loadCrossPluginLoadState() {
 void showConsoleHelp(CBasePlayer@ plr, bool showChatMessage) {
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '------------------------------ Radio Commands ------------------------------\n\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Type ".radio" to open the radio menu.\n\n');
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Type ".radio search <search terms>" to search for songs to play.\n\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Type ".radio faq" for answers to frequently asked questions.\n\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Type ".radio hud" to toggle the radio HUD.\n\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Type ".radio list" to show who\'s listening.\n\n');
@@ -554,6 +575,13 @@ bool doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 		}
 		else if (args.ArgC() > 1 and args[1] == "faq") {
 			showConsoleFaq(plr, !inConsole);
+		}
+		else if (args.ArgC() > 2 and args[1] == "search") {
+			string searchStr = args[2];
+			for (int i = 3; i < args.ArgC(); i++) {
+				searchStr += " " + args[i];
+			}
+			openMenuSearch(EHandle(plr), searchStr, 0);
 		}
 		
 		return true;

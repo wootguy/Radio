@@ -189,7 +189,7 @@ void callbackMenuSong(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const C
 		
 		g_Scheduler.SetTimeout("openMenuSong", 0.0f, EHandle(plr), path, 0, childPath);
 	}
-	else if (option.Find("play:") == 0) {
+	else if (option.Find("play:") == 0 or option.Find("playSearch:") == 0) {
 		array<string> parts = option.Split(":");
 		int page = atoi(parts[1]);
 		string path = parts[2];
@@ -212,7 +212,10 @@ void callbackMenuSong(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const C
 			chan.queueSong(plr, song);
 		}
 		
-		if (page != -1) { // -1 = song was added by request - not by browsing
+		if (parts[0] == "playSearch") {
+			g_Scheduler.SetTimeout("openMenuSearch", 0.0f, EHandle(plr), parts[3], page);
+		}
+		else if (page != -1) { // -1 = song was added by request - not by browsing
 			g_Scheduler.SetTimeout("openMenuSong", 0.0f, EHandle(plr), parentPath, page, "");
 		}
 	}
@@ -675,38 +678,55 @@ void openMenuSong(EHandle h_plr, string path, int page, string lastChild) {
 		int itemPage = moreThanOnePage ? (i / 6) : 0;
 		
 		if (child.file !is null) {
-			Song@ song = @child.file;
-			string label = song.artist + " - " + song.title;
-			
-			bool isInQueue = false;
-			bool nowPlaying = false;
-			for (uint k = 0; k < chan.queue.size(); k++) {
-				if (chan.queue[k].path == song.path) {
-					nowPlaying = k == 0;
-					isInQueue = k != 0;
-					break;
-				}
-			}
-			
-			if (nowPlaying || isInQueue) {
-				label = "\\r" + label;
-			} else {
-				label = "\\w" + label;
-			}
-			
-			if (nowPlaying) {
-				label += " \\d(now playing)";
-			} else if (isInQueue) {
-				label += " \\d(in queue)";
-			}
-			
-			g_menus[eidx].AddItem(label + "\\y", any("play:" + itemPage + ":" + song.path));
+			Song@ song = @child.file;			
+			g_menus[eidx].AddItem(chan.getSongMenuLabel(song) + "\\y", any("play:" + itemPage + ":" + song.path));
 		} else {
 			if (wentUp and lastChild == child.name) {
 				page = itemPage;
 			}
 			g_menus[eidx].AddItem("\\w" + child.name + "/\\y", any("search:" + prefix + child.name));
 		}
+	}
+	
+	g_menus[eidx].Register();
+	g_menus[eidx].Open(0, page, plr);
+}
+
+void openMenuSearch(EHandle h_plr, string searchStr, int page) {
+	CBasePlayer@ plr = cast<CBasePlayer@>(h_plr.GetEntity());
+	if (plr is null) {
+		return;
+	}
+
+	int eidx = plr.entindex();
+	PlayerState@ state = getPlayerState(plr);
+	if (state.channel < 0) {
+		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] Join a channel before playing songs!\n");
+		return;
+	}
+	Channel@ chan = g_channels[state.channel];
+	
+	@g_menus[eidx] = CTextMenu(@callbackMenuSong);
+	
+	string title = "Queue Song  " + chan.getQueueCountString();
+	if (!chan.canDj(plr)) {
+		title = "Request Song";
+	}
+	
+	@g_menus[eidx] = CTextMenu(@callbackMenuSong);
+	g_menus[eidx].SetTitle("\\y" + chan.name + " - " + title + "\\y\nResults for \"" + searchStr + "\"    ");	
+	
+	array<Song@> results = searchSongs(searchStr);
+	
+	if (results.size() == 0) {
+		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] No results for \"" + searchStr + "\"\n");
+		return;
+	}
+	
+	bool moreThanOnePage = results.size() > 9;
+	for (uint i = 0; i < results.size(); i++) {
+		int itemPage = moreThanOnePage ? (i / 7) : 0;
+		g_menus[eidx].AddItem("\\w" + chan.getSongMenuLabel(results[i]) + "\\y", any("playSearch:" + itemPage + ":" + results[i].path + ":" + searchStr));
 	}
 	
 	g_menus[eidx].Register();
