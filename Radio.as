@@ -14,12 +14,13 @@
 // - pausefix <float> (only run once per sec)
 // - let dj rename channel
 // - invite cooldowns should use datetime
-// - didn't show who stopped the song with no dj
 // - read volume level from ambient_music when scripts are able to read it from the bsp
 // - play on connect if first join
 
 const string SONG_FILE_PATH = "scripts/plugins/Radio/songs.txt";
 const string MUSIC_PACK_PATH = "scripts/plugins/Radio/music_packs.txt";
+const string AUTO_DJ_NAME = "Gus";
+const float MAX_AUTO_DJ_SONG_LENGTH_MINUTES = 30.0f; // don't play songs longer than this on the auto-dj channel
 
 CCVar@ g_inviteCooldown;
 CCVar@ g_requestCooldown;
@@ -184,6 +185,10 @@ void PluginInit() {
 	for (uint i = 0; i < g_channels.size(); i++) {
 		g_channels[i].name = "Channel " + (i+1);
 		g_channels[i].id = i;
+		
+		if (i == g_channels.size()-1) {
+			g_channels[i].autoDj = true;
+		}
 	}
 	
 	for ( int i = 1; i <= g_Engine.maxClients; i++ )

@@ -7,6 +7,9 @@ class Channel {
 	DateTime startTime; // time last song was started
 	string shouldSkipSong = ""; // name of player who skipped if not empty
 	
+	bool autoDj = false; // play random songs and don't let anyone dj
+	array<Song@> songsLeft; // songs left to play in auto dj queue
+	
 	array<string> mapChangeListeners;
 	
 	void think() {
@@ -17,6 +20,13 @@ class Channel {
 		if (isSongFinished() or shouldSkipSong.Length() > 0) {
 			if (queue.size() > 0) {
 				queue.removeAt(0);
+			}
+			if (autoDj) {
+				if (songsLeft.size() == 0) {
+					generateAutoDjQueue();
+				}
+				queue.insertLast(songsLeft[0]);
+				songsLeft.removeAt(0);
 			}
 			
 			if (queue.size() > 0) {
@@ -33,19 +43,40 @@ class Channel {
 				playSong(song);
 				{
 					CBasePlayer@ dj = getDj();
-					RelaySay(name + "|" + song.getName() + "|" + (dj !is null ? string(getDj().pev.netname) : "(none)"));
+					if (!autoDj)
+						RelaySay(name + "|" + song.getName() + "|" + (dj !is null ? string(getDj().pev.netname) : "(none)"));
 				}
 			} else if (shouldSkipSong.Length() > 0) {
 				stopMusic();
-				if (currentDj.Length() > 0) {
+				if (currentDj.Length() == 0) {
 					announce("Song stopped by " + shouldSkipSong + ".");
 				} else {
-					announce("Song stopped.");
+					announce("Song stopped.", HUD_PRINTNOTIFY);
 				}
 			}
 			
 			shouldSkipSong = "";
 		}
+	}
+	
+	void generateAutoDjQueue() {		
+		array<Song@> options;
+		
+		for (uint i = 0; i < g_songs.size(); i++) {
+			if (float(g_songs[i].lengthMillis) > 1000*60*MAX_AUTO_DJ_SONG_LENGTH_MINUTES) {
+				continue; // skip super long songs
+			}
+			options.insertLast(g_songs[i]);
+		}
+		
+		songsLeft.resize(0);
+		while (options.size() > 0) {
+			int choice = Math.RandomLong(0, options.size()-1);
+			songsLeft.insertLast(options[choice]);
+			options.removeAt(choice);
+		}
+		
+		println("Created playlist of " + songsLeft.size() + " songs");
 	}
 	
 	void updateHud(CBasePlayer@ plr, PlayerState@ state) {
@@ -65,6 +96,10 @@ class Channel {
 		Song@ song = getSong();
 		CBasePlayer@ dj = getDj();
 		string djName = dj !is null ? " - " + dj.pev.netname : "";
+		if (autoDj) {
+			djName = " - " + AUTO_DJ_NAME;
+		}
+		
 		
 		if (isDjReserved()) {
 			int reserveTimeLeft = int(Math.Ceil(g_djReserveTime.GetInt() - g_Engine.time));
@@ -188,6 +223,10 @@ class Channel {
 	}
 	
 	bool canDj(CBasePlayer@ plr) {
+		if (autoDj) {
+			return false;
+		}
+		
 		CBasePlayer@ dj = getDj();
 		return (dj is null and !isDjReserved()) or (dj !is null and dj.entindex() == plr.entindex());
 	}
@@ -247,7 +286,8 @@ class Channel {
 				announce("Now playing: " + song.getName());
 			}
 			
-			RelaySay(name + "|" + song.getName() + "|" + (getDj() !is null ? string(getDj().pev.netname) : "(none)"));
+			if (!autoDj)
+				RelaySay(name + "|" + song.getName() + "|" + (getDj() !is null ? string(getDj().pev.netname) : "(none)"));
 		} else {
 			announce("" + plr.pev.netname + " queued: " + song.getName(), currentDj.Length() == 0 ? HUD_PRINTTALK : HUD_PRINTNOTIFY);
 		}

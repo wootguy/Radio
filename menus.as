@@ -517,11 +517,14 @@ void openMenuRadio(EHandle h_plr) {
 	g_menus[eidx].AddItem("\\wHelp\\y", any("help"));
 	g_menus[eidx].AddItem("\\wTurn off\\y", any("turn-off"));
 	g_menus[eidx].AddItem("\\wChange channel\\y", any("channels"));
-	g_menus[eidx].AddItem("\\w" + (canDj ? "Queue" : "Request") + " song" + "\\y", any("add-song"));
-	g_menus[eidx].AddItem("\\w" + (canDj ? "Edit" : "View") + " queue  " + chan.getQueueCountString() + "\\y", any("edit-queue"));
-	g_menus[eidx].AddItem("\\wSkip song\\y", any("skip-song"));
-	g_menus[eidx].AddItem("\\w" + (isDj ? "Quit DJ" : "Become DJ") + "\\y", any("become-dj"));
-	g_menus[eidx].AddItem("\\wInvite\\y", any("invite"));
+	
+	if (!chan.autoDj) {
+		g_menus[eidx].AddItem("\\w" + (canDj ? "Queue" : "Request") + " song" + "\\y", any("add-song"));
+		g_menus[eidx].AddItem("\\w" + (canDj ? "Edit" : "View") + " queue  " + chan.getQueueCountString() + "\\y", any("edit-queue"));
+		g_menus[eidx].AddItem("\\wSkip song\\y", any("skip-song"));
+		g_menus[eidx].AddItem("\\w" + (isDj ? "Quit DJ" : "Become DJ") + "\\y", any("become-dj"));
+		g_menus[eidx].AddItem("\\wInvite\\y", any("invite"));
+	}
 	
 	g_menus[eidx].Register();
 	g_menus[eidx].Open(0, 0, plr);
@@ -558,7 +561,13 @@ void openMenuChannelSelect(EHandle h_plr) {
 		}
 		
 		Song@ song = chan.queue.size() > 0 ? chan.queue[0] : null;
-		label += "\n\\y      Current DJ:\\w " + (dj !is null ? string(dj.pev.netname) : "\\d(none)");
+		
+		string djName = dj !is null ? string(dj.pev.netname) : "\\d(none)";
+		if (chan.autoDj) {
+			djName = AUTO_DJ_NAME + " \\d(BOT)";
+		}
+		
+		label += "\n\\y      Current DJ:\\w " + (djName);
 		label += "\n\\y      Now Playing:\\w " + (song !is null ? song.getName() : "\\d(nothing)");
 		
 		label += "\n\\y";
@@ -705,6 +714,11 @@ void openMenuSearch(EHandle h_plr, string searchStr, int page) {
 		return;
 	}
 	Channel@ chan = g_channels[state.channel];
+	
+	if (chan.autoDj) {
+		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] " + AUTO_DJ_NAME + " doesn't take requests.\n");
+		return;
+	}
 	
 	@g_menus[eidx] = CTextMenu(@callbackMenuSong);
 	
