@@ -205,13 +205,16 @@ void callbackMenuSong(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const C
 					helpPath += "/";
 				}
 				chan.announce("" + plr.pev.netname + " requested: " + helpPath + song.getName());
+				openMenuSongRequest(EHandle(chan.getDj()), plr.pev.netname, helpPath + song.getName(), path);
 			}
 		}
 		else {			
 			chan.queueSong(plr, song);
 		}
 		
-		g_Scheduler.SetTimeout("openMenuSong", 0.0f, EHandle(plr), parentPath, page, "");
+		if (page != -1) { // -1 = song was added by request - not by browsing
+			g_Scheduler.SetTimeout("openMenuSong", 0.0f, EHandle(plr), parentPath, page, "");
+		}
 	}
 	else if (option == "main-menu") {		
 		g_Scheduler.SetTimeout("openMenuRadio", 0.0f, EHandle(plr));
@@ -732,6 +735,24 @@ void openMenuInviteRequest(EHandle h_plr, string asker, int channel) {
 	label += song !is null ? "\\w" + song.getName() : "\\d(nothing)";
 	
 	g_menus[eidx].AddItem(label + "\\y", any("exit"));
+	
+	g_menus[eidx].Register();
+	g_menus[eidx].Open(0, 0, plr);
+}
+
+void openMenuSongRequest(EHandle h_plr, string asker, string songName, string songPath) {
+	CBasePlayer@ plr = cast<CBasePlayer@>(h_plr.GetEntity());
+	if (plr is null) {
+		return;
+	}
+
+	int eidx = plr.entindex();
+	
+	@g_menus[eidx] = CTextMenu(@callbackMenuSong);
+	g_menus[eidx].SetTitle("\\ySong request:\n" + songName + "\n-" + asker + "\n");
+	
+	g_menus[eidx].AddItem("\\wQueue song\\y", any("play:-1:" + songPath));	
+	g_menus[eidx].AddItem("\\wIgnore\\y", any("exit"));
 	
 	g_menus[eidx].Register();
 	g_menus[eidx].Open(0, 0, plr);
