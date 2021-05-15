@@ -139,6 +139,34 @@ class Channel {
 		return queue.size() > 0 ? queue[0] : null;
 	}
 	
+	string getSongMenuLabel(Song@ song) {
+		string label = song.getName();
+			
+		bool isInQueue = false;
+		bool nowPlaying = false;
+		for (uint k = 0; k < queue.size(); k++) {
+			if (queue[k].path == song.path) {
+				nowPlaying = k == 0;
+				isInQueue = k != 0;
+				break;
+			}
+		}
+		
+		if (nowPlaying || isInQueue) {
+			label = "\\r" + label;
+		} else {
+			label = "\\w" + label;
+		}
+		
+		if (nowPlaying) {
+			label += " \\d(now playing)";
+		} else if (isInQueue) {
+			label += " \\d(in queue)";
+		}
+		
+		return label;
+	}
+	
 	string getQueueCountString() {
 		bool queueFull = int(queue.size()) > g_maxQueue.GetInt();
 		string queueColor = queueFull ? "\\r" : "\\d";

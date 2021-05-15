@@ -20,6 +20,8 @@ void loadSongs() {
 			song.title = parts[2];
 			song.lengthMillis = atoi(parts[3]);
 			
+			song.searchName = song.getName().ToLowercase();
+			
 			g_songs.insertLast(song);
 			
 			string fname = song.path;
