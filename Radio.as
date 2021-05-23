@@ -16,6 +16,7 @@
 // - invite cooldowns should use datetime
 // - read volume level from ambient_music when scripts are able to read it from the bsp
 // - play on connect if first join
+// - unqueue by pressing again
 
 const string SONG_FILE_PATH = "scripts/plugins/Radio/songs.txt";
 const string MUSIC_PACK_PATH = "scripts/plugins/Radio/music_packs.txt";

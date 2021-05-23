@@ -198,7 +198,10 @@ void callbackMenuSong(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const C
 		Song@ song = getNodeFromPath(path).file;
 		
 		if (!canDj)  {
-			if (!state.shouldRequestCooldown(plr)) {
+			if (int(chan.queue.size()) >= g_maxQueue.GetInt()) {
+				g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] Can't request now. The queue is full.\n");
+			}
+			else if (!state.shouldRequestCooldown(plr)) {
 				state.lastRequest = g_Engine.time;
 				string helpPath = parentPath;
 				if (helpPath.Length() > 0) {
