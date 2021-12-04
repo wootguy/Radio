@@ -4,7 +4,7 @@ from threading import Thread
 src_dir = '../../../../svencoop_addon/mp3/radio_twlz/'
 readme = 'radio_twlz_readme.txt'
 version_file_src = 'version_check_success.mp3'
-version_file_dst = 'version_check/v3.mp3'
+version_file_dst = 'version_check/v4.mp3'
 zip_prog = 'C:\\Program Files\\7-Zip\\7zG.exe'
 pack_name = "radio_twlz_%s" % datetime.date.today().strftime("%Y_%m_%d")
 parallel_thread_count = 8
@@ -13,8 +13,8 @@ target_level = -1 # -1 = convert to all quality levels
 
 quality_levels = [
 	'-qscale:a 5 -ar 44100',
-	'-qscale:a 8 -ac 1 -ar 22050',
-	'-b:a 16k -ac 1 -ar 22050'
+	'-qscale:a 8 -ac 1 -ar 22050'
+	#'-b:a 16k -ac 1 -ar 22050'   # worse than nothing, pierces ears
 ]
 
 # ffmpeg -i dave_rogers_deja_vu.mp3 -codec:a libmp3lame -b:a 8k -ac 1 -ar 8000 -af "lowpass=f=1600" -y test.mp3
@@ -32,7 +32,7 @@ for level in range(0, len(quality_levels)):
 	if not os.path.exists(output_dir):
 		os.makedirs(output_dir)
 
-all_jobs = []
+all_jobs = ['ignore_this'] # not empty or else first quality level of first song is skipped, idk why
 for root, folders, files in os.walk(src_dir):
 	for filename in files:
 		in_path = os.path.join(root, filename).replace("\\", "/")
