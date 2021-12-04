@@ -31,15 +31,16 @@ class Channel {
 			
 			if (queue.size() > 0) {
 				Song@ song = queue[0];
-				string msg = "Now playing: " + song.getName();
 				if (shouldSkipSong.Length() > 0) {
+					string msg;
 					if (currentDj.Length() == 0) {
 						msg = "Song skipped by " + shouldSkipSong + ". " + msg;
 					} else {
 						msg = "Song skipped. " + msg;
 					}
+					announce(msg);
 				}
-				announce(msg);
+				
 				playSong(song);
 				{
 					CBasePlayer@ dj = getDj();
