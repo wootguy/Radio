@@ -325,6 +325,9 @@ HookReturnCode ClientJoin(CBasePlayer@ plr) {
 		}
 		
 		g_level_changers[id] = true;
+	} else {
+		if (!state.isRadioListener()) // start map music instead of radio
+			state.playAfterFullyLoaded = true;
 	}
 	
 	// always doing this in case someone left during a level change, preventing the value from resetting
