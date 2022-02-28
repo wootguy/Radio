@@ -20,7 +20,7 @@ public:
 
 	// sampleLen must be a multiple of (framesize*framesPerPacket)
 	// returns size of packet, or -1 on failure
-	int write_steam_voice_packet(int16_t* samples, int sampleLen);
+	std::string write_steam_voice_packet(int16_t* samples, int sampleLen);
 	
 	// resets encoder and sequence number for starting a new stream of audio (not necessary?)
 	void reset();

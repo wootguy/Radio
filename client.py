@@ -180,7 +180,7 @@ def get_youtube_info(url, channel, songId):
 		print(e)
 		send_queue.put("~Failed load video info for: " + url)
 
-def playtube_async(url, offset, asker, songId):
+def playtube_async(url, offset, asker, channelId, songId):
 	global tts_id
 	global g_media_players
 	global cached_video_urls
@@ -231,6 +231,7 @@ def playtube_async(url, offset, asker, songId):
 		#print(cmd)
 		pipefile = open(pipePath, 'w')
 		ffmpeg = subprocess.Popen(cmd.split(' '), stdout=pipefile)
+		steam_voice.stdin.write("assign %s %d\n" % (pipeName, channelId))
 		steam_voice.stdin.write("notify %s\n" % pipeName)
 		
 		g_media_players.append({
@@ -242,6 +243,7 @@ def playtube_async(url, offset, asker, songId):
 			'url': url,
 			'length': length,
 			'offset': offset,
+			'channelId': channelId,
 			'songId': songId
 		})
 		print("Play offset %d: " % offset + title)
@@ -388,22 +390,18 @@ def transmit_voice():
 			for idx, player in enumerate(g_media_players):
 				if player['pipe'] == pipeName:
 					player['message_sent'] = True
-					send_queue.put("play:%s:%s:%s:%s:%s:%s" % (1, player['songId'], packetId, player['offset'], player['length'], player['title']))
+					send_queue.put("play:%s:%s:%s:%s:%s:%s" % (player['channelId'], player['songId'], packetId, player['offset'], player['length'], player['title']))
 					player['start_time'] = time.time()
 					break
 			continue
 
-		idBytes = packetId.to_bytes(2, 'big')
-		if line == "SILENCE":
-			# packets always need to be flowing so that there aren't extra gaps during the quiet/silent part of a song.
-			# but it's annoying to always show the voice icon even when nothing is playing.
-			# this special edit will tell the plugin to not send the voice packet.
+		packet = packetId.to_bytes(2, 'big')
+		for idx, stream in enumerate(line.split(":")):
+			numBytes = int(len(stream)/2)
+			packet += numBytes.to_bytes(2, 'big') + bytes.fromhex(stream)
+			#print("STREAM %d (%d): %s" % (idx, len(stream), stream))
 			
-			packet = idBytes + bytes.fromhex('ff') # no packets are ever this small. Plugin will know to replace this with silence
-			#print("Send %d (silent)" % packetId)
-		else:
-			packet = idBytes + bytes.fromhex(line)		
-			#print("Send %d (%d bytes)" % (packetId, len(packet)))
+		print("Send %d (%d bytes)" % (packetId, len(packet)))
 		
 		if server_addr:
 			udp_socket.sendto(packet, server_addr)
@@ -499,7 +497,7 @@ while True:
 			expectedPlayTime = player['length'] - player['offset']
 			if playTime < expectedPlayTime - 10:
 				send_queue.put("~Video playback failed at %s. Attempting to resume." % format_time(playTime + player['offset']))
-				t = Thread(target = playtube_async, args =(player['url'], player['offset'] + int(playTime + 1.5), player['asker'], player['songId'], ))
+				t = Thread(target = playtube_async, args =(player['url'], player['offset'] + int(playTime + 1.5), player['asker'], player['channelId'], player['songId'], ))
 				t.daemon = True
 				del cached_video_urls[player['url']]
 				t.start()
@@ -534,11 +532,13 @@ while True:
 	if line.startswith('https://www.youtube.com') or line.startswith('https://youtu.be'):				
 		args = line.split()
 		offset = 0
+		channelId = 0
 		songId = 0
 		try:
 			if len(args) >= 2:
 				timecode = args[1]
-				songId = int(args[2])
+				channelId = int(args[2])
+				songId = int(args[3])
 				if ':' in timecode:
 					minutes = timecode[:timecode.find(':')]
 					seconds = timecode[timecode.find(':')+1:]
@@ -548,7 +548,7 @@ while True:
 		except Exception as e:
 			print(e)
 	
-		t = Thread(target = playtube_async, args =(args[0], offset, name, songId, ))
+		t = Thread(target = playtube_async, args =(args[0], offset, name, channelId, songId, ))
 		t.daemon = True
 		t.start()
 		continue

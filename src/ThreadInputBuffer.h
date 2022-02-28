@@ -1,6 +1,7 @@
 #pragma once
 #include "ThreadSafeInt.h"
 #include <thread>
+#include "pid.h"
 
 enum BUFFER_STATUS {
 	TIB_FULL,  // input buffer is full and ready to be read
@@ -12,6 +13,8 @@ enum BUFFER_STATUS {
 	TIB_KILL, // thread should kill itself and data should no longer be read
 };
 
+#define RMS_HISTORY_SIZE 20 // should be based on audio duration per packet but isn't
+
 class ThreadInputBuffer {
 public:
 	std::string resourceName; // pipe or file name
@@ -20,6 +23,14 @@ public:
 	bool wasReceivingSamples;
 	bool shouldNotifyPlayback;
 	bool isPipe;
+	int mixerChannel; // which packet stream to write to
+	
+	// loudness normalization
+	float volume;
+	pid_ctrl_t pid;
+	float idealRms; // target loudness
+	int rmsIdx;
+	float rmsOld[RMS_HISTORY_SIZE];
 
 	ThreadInputBuffer(size_t bufferSize);
 	~ThreadInputBuffer();
@@ -52,6 +63,10 @@ public:
 	void startMp3InputThread(std::string fileName, int sampleRate, float volume, float speed);
 
 	bool isFinished(); // true if input thread was terminated
+
+	void loudnessNormalization(int16_t* samples, int numSamples);
+
+	void resetLoudnessNormalization();
 
 private:
 	std::thread inputThread;

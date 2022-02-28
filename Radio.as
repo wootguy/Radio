@@ -70,8 +70,7 @@ array<CTextMenu@> g_menus = {
 
 
 class PlayerState {
-	int channel = 1;
-	DateTime tuneTime; // last time player chose a channel (for displaying desync info)
+	int channel = 0;
 	dictionary lastInviteTime; // for invite cooldowns per player and for \everyone
 	float lastRequest; // for request cooldowns
 	float lastDjToggle; // for cooldown
@@ -451,7 +450,6 @@ void radioThink() {
 				Song@ song = g_channels[state.channel].queue[0];
 				clientCommand(plr, song.getMp3PlayCommand());
 				g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] Now playing: " + song.getName() + "\n");
-				state.tuneTime = DateTime();
 			} else {
 				AmbientMusicRadio::toggleMapMusic(plr, true);
 			}

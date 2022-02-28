@@ -161,7 +161,6 @@ void callbackMenuChannelSelect(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber
 		AmbientMusicRadio::toggleMapMusic(plr, !musicIsPlaying);
 		
 		g_channels[state.channel].announce("" + plr.pev.netname + " tuned in.", HUD_PRINTNOTIFY, plr);
-		state.tuneTime = DateTime();
 	}
 }
 
@@ -390,7 +389,6 @@ void callbackMenuHelp(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const C
 			Song@ song = chan.queue[0];
 			clientCommand(plr, song.getMp3PlayCommand());
 			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "Now playing: " + song.getName() + "\n");
-			state.tuneTime = DateTime();
 		} else {
 			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] There is no music playing on " + chan.name + "\n");
 		}

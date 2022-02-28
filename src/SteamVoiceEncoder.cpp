@@ -3,6 +3,7 @@
 #include <vector>
 #include <iomanip>
 #include "crc32.h"
+#include <sstream>
 
 using namespace std;
 
@@ -49,16 +50,16 @@ bool SteamVoiceEncoder::encode_opus_frame(int16_t* samples, OpusFrame& outFrame)
 }
 
 
-int SteamVoiceEncoder::write_steam_voice_packet(int16_t* samples, int sampleLen) {
+string SteamVoiceEncoder::write_steam_voice_packet(int16_t* samples, int sampleLen) {
 
 	if (sampleLen % (frameSize * framesPerPacket) != 0) {
 		fprintf(stderr, "write_steam_voice_packet requires exactly %d samples\n", sampleLen);
-		return -1;
+		return "";
 	}
 
 	for (int i = 0; i < framesPerPacket; i++) {
 		if (!encode_opus_frame(samples + i * frameSize, frameBuffer[i])) {
-			return -1;
+			return "";
 		}
 	}
 
@@ -114,10 +115,10 @@ int SteamVoiceEncoder::write_steam_voice_packet(int16_t* samples, int sampleLen)
 		}
 	}
 
+	stringstream hexdata;
 	for (int i = 0; i < packet.size(); i++) {
-		std::cout << std::setfill('0') << std::setw(2) << std::hex << (unsigned int)packet[i];
+		hexdata << setfill('0') << setw(2) << hex << (unsigned int)packet[i];
 	}
-	std::cout << std::endl;
 
 	//outFile << "},\n";
 
@@ -128,7 +129,7 @@ int SteamVoiceEncoder::write_steam_voice_packet(int16_t* samples, int sampleLen)
 	}
 	*/
 
-	return packet.size();
+	return hexdata.str();
 }
 
 void SteamVoiceEncoder::reset()
