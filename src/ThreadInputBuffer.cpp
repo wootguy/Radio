@@ -3,6 +3,7 @@
 #include "stream_mp3.h"
 #include <thread>
 #include <cstring>
+#include "util.h"
 
 using namespace std;
 
@@ -17,6 +18,11 @@ ThreadInputBuffer::ThreadInputBuffer(size_t bufferSize)
 	wasReceivingSamples = false;
 	shouldNotifyPlayback = false;
 	isPipe = false;
+	mixerChannel = 0;
+
+	idealRms = 0.18f; // -16 dB	
+
+	resetLoudnessNormalization();
 }
 
 ThreadInputBuffer::~ThreadInputBuffer()
@@ -175,4 +181,64 @@ void ThreadInputBuffer::startMp3InputThread(std::string fileName, int sampleRate
 bool ThreadInputBuffer::isFinished()
 {
 	return status.getValue() == TIB_FINISHED || status.getValue() == TIB_KILL;
+}
+
+void ThreadInputBuffer::loudnessNormalization(int16_t* samples, int numSamples)
+{
+	float rmsSum = 0;
+
+	for (int k = 0; k < numSamples; k++) {
+		float amp = samples[k] / 32768.0f;
+		int16_t adjustedSample = clampf(amp * volume, -1.0f, 1.0f) * 32767.0f;
+		float adjustedAmp = (abs(adjustedSample) / 32768.0f);
+		rmsSum += adjustedAmp * adjustedAmp;
+	}
+
+	float rms = sqrt(rmsSum / numSamples);
+	float decibel = 20 * log10(rms);
+
+	bool silentPart = rmsIdx++ < RMS_HISTORY_SIZE || decibel < -50;
+	if (!silentPart) {
+		rmsOld[rmsIdx % RMS_HISTORY_SIZE] = rms;
+	}
+
+	float avgRms = 0;
+	for (int k = 0; k < RMS_HISTORY_SIZE; k++) {
+		avgRms += rmsOld[k];
+	}
+	avgRms /= RMS_HISTORY_SIZE;
+	float avgDb = 20 * log10(rms);
+
+	float error = avgRms - idealRms;
+
+	float pidWant = 0;
+	if (!silentPart) {
+		pidWant = pid_process(&pid, error);
+
+		volume += pidWant;
+		if (volume != volume || isinf(volume)) {
+			volume = 1.0f;
+		}
+		if (volume <= 0.1f) {
+			volume = 0.1f;
+		}
+	}
+
+	//fprintf(stderr, "dB %2.1f, RMS %.3f Error %+.3f, Vol %.2f, %s\n", avgDb, avgRms, error, volume, silentPart ? "silent" : "");
+}
+
+void ThreadInputBuffer::resetLoudnessNormalization()
+{
+	rmsIdx = 0;
+	volume = 1.0f;
+
+	for (int i = 0; i < RMS_HISTORY_SIZE; i++) {
+		rmsOld[i] = idealRms;
+	}
+	pid_init(&pid);
+
+	float kp = 0.2f; // how fast the system responds
+	float ki = 0.0f;
+	float kd = 1.0f;
+	pid_set_gains(&pid, kp, ki, kd);
 }

@@ -3,7 +3,6 @@ class VoicePacket {
 	array<uint8> data;
 }
 
-array<VoicePacket> g_packet_stream;
 float g_clock_adjust = 0; // adjustment made to sync the server clock with the packet times
 
 const string VOICE_FILE = "scripts/plugins/store/_fromvoice.txt";
@@ -208,22 +207,36 @@ void load_packets_from_file(File@ file, bool fastSend) {
 	} else {
 		uint16 packetId = (char_to_nibble[ uint(line[0]) ] << 12) + (char_to_nibble[ uint(line[1]) ] << 8) +
 						  (char_to_nibble[ uint(line[2]) ] << 4) + (char_to_nibble[ uint(line[3]) ] << 0);
-		uint len = (line.Length()-4)/2;
-
-		VoicePacket packet;
-		packet.id = packetId;
+						  
+		array<string> parts = line.Split(":"); // packet_id : channel_1_packet : channel_2_packet : ...
 		
-		for (uint i = 4; i < line.Length()-1; i += 2) {
-			uint n1 = char_to_nibble[ uint(line[i]) ];
-			uint n2 = char_to_nibble[ uint(line[i + 1]) ];
-			packet.data.insertLast((n1 << 4) + n2);
+		if (parts.size()-1 != g_channels.size()) {
+			println("Packet streams != channel count (" + (parts.size()-1) + " " + g_channels.size() + "): " + line);			
+			finish_sample_load(file);
+			return; // don't let packet buffer sizes get out of sync between channels
 		}
 		
-		g_packet_stream.insertLast(packet);
+		//println(line);
+		
+		for (uint c = 1; c < parts.size(); c++) {
+			string packetString = parts[c];
 
-		if (line.Length() % 2 == 1) {
-			println("ODD LENGTH");
+			VoicePacket packet;
+			packet.id = packetId;
+			
+			for (uint i = 0; i < packetString.Length()-1; i += 2) {
+				uint n1 = char_to_nibble[ uint(packetString[i]) ];
+				uint n2 = char_to_nibble[ uint(packetString[i + 1]) ];
+				packet.data.insertLast((n1 << 4) + n2);
+			}
+			
+			g_channels[c-1].packetStream.insertLast(packet);
+
+			if (packetString.Length() % 2 == 1) {
+				println("ODD LENGTH");
+			}
 		}
+		
 	}
 	
 	float loadTime = (g_EngineFuncs.Time() - sample_load_start) + file_check_interval + g_Engine.frametime;
@@ -241,7 +254,10 @@ void load_packets_from_file(File@ file, bool fastSend) {
 }
 
 void play_samples(bool buffering) {
-	if (g_packet_stream.size() < 1 or (buffering and g_packet_stream.size() < ideal_buffer_size)) {
+	// all channels receive/send packets at the same time so it doesn't matter which channel is checked
+	uint packetStreamSize = g_channels[0].packetStream.size();
+
+	if (packetStreamSize < 1 or (buffering and packetStreamSize < ideal_buffer_size)) {
 		if (!buffering) {
 			send_debug_message("[Radio] Buffering voice packets...\n");
 		}
@@ -250,58 +266,66 @@ void play_samples(bool buffering) {
 		g_ideal_next_packet_time = g_playback_start_time + g_packet_idx*g_packet_delay;
 		g_packet_idx = 1;
 		
-		send_debug_message("Buffering voice packets " + g_packet_stream.size() + " / " + ideal_buffer_size + "\n");
+		send_debug_message("Buffering voice packets " + packetStreamSize + " / " + ideal_buffer_size + "\n");
 		g_Scheduler.SetTimeout("play_samples", 0.1f, true);
 		return;
 	}
 	
-	VoicePacket packet = g_packet_stream[0];
-	g_packet_stream.removeAt(0);
-	
-	for (uint i = 0; i < g_channels.size(); i++) {
-		g_channels[i].triggerPacketEvents(packet.id);
-	}
-	
 	int speaker = getEmptyPlayerSlotIdx();
 	
-	if (packet.data.size() == 0) {
-		g_Scheduler.SetTimeout("play_samples", 0.0f, false);
-		return;
-	}
+	string channelPacketSizes = "";
 	
-	bool silentPacket = packet.data.size() <= 4 and packet.data[0] == 0xff;
+	for (int c = 0; c < int(g_channels.size()); c++) {		
+		VoicePacket packet = g_channels[c].packetStream[0];
+		g_channels[c].packetStream.removeAt(0);
 	
-	if (!silentPacket) {
-		for ( int i = 1; i <= g_Engine.maxClients; i++ )
-		{
-			CBasePlayer@ plr = g_PlayerFuncs.FindPlayerByIndex(i);
-			
-			if (plr is null or !plr.IsConnected()) {
-				continue;
-			}
-			
-			PlayerState@ state = getPlayerState(plr);
-			if (state.channel != -1) {
-				NetworkMessage m(MSG_ONE_UNRELIABLE, NetworkMessages::NetworkMessageType(53), plr.edict());
-					m.WriteByte(g_voice_ent_idx); // entity which is "speaking"
-					m.WriteShort(packet.data.size()); // compressed audio length
-					for (uint k = 0; k < packet.data.size(); k++) {
-						m.WriteByte(packet.data[k]);
-					}
-				m.End();
-			}
+		g_channels[c].triggerPacketEvents(packet.id);
+	
+		/*
+		if (packet.data.size() == 0) {
+			g_Scheduler.SetTimeout("play_samples", 0.0f, false);
+			return;
 		}
+		*/
+		
+		channelPacketSizes += " " + formatInt(packet.data.size(), "", 3);
+		
+		bool silentPacket = packet.data.size() <= 4 and packet.data[0] == 0xff;
+		
+		if (!silentPacket) {
+			for ( int i = 1; i <= g_Engine.maxClients; i++ )
+			{
+				CBasePlayer@ plr = g_PlayerFuncs.FindPlayerByIndex(i);
+				
+				if (plr is null or !plr.IsConnected()) {
+					continue;
+				}
+				
+				PlayerState@ state = getPlayerState(plr);
+				
+				if (state.channel == c) {
+					NetworkMessage m(MSG_ONE_UNRELIABLE, NetworkMessages::NetworkMessageType(53), plr.edict());
+						m.WriteByte(g_voice_ent_idx); // entity which is "speaking"
+						m.WriteShort(packet.data.size()); // compressed audio length
+						for (uint k = 0; k < packet.data.size(); k++) {
+							m.WriteByte(packet.data[k]);
+						}
+					m.End();
+				}
+			}
+		}	
 	}
 	
 	// try to keep buffer near ideal size
-	string logSpecial = silentPacket ? "silence " : "";
-	if (int(g_packet_stream.size()) > ideal_buffer_size*1.2) {
+	//string logSpecial = silentPacket ? "silence " : "";
+	string logSpecial = "";
+	if (int(packetStreamSize) > ideal_buffer_size*1.2) {
 		g_playback_start_time -= 0.05f;
 		logSpecial = "Speedup 0.05";
-	} else if (g_packet_stream.size() > ideal_buffer_size) {
+	} else if (packetStreamSize > ideal_buffer_size) {
 		g_playback_start_time -= 0.001f;
 		logSpecial = "Speedup 0.001";
-	} else if (g_packet_stream.size() < 3) {
+	} else if (packetStreamSize < 3) {
 		g_playback_start_time += 0.001f;
 		logSpecial = "Slowdown 0.001";
 	}
@@ -317,8 +341,8 @@ void play_samples(bool buffering) {
 			+ " " + formatFloat(errorTime, "+", 3, 3)
 			+ "   Delay: " + formatFloat(nextDelay, "", 6, 4)
 			+ " " + formatFloat(g_Engine.frametime, "", 6, 4)
-			+ "   Sz: " + formatInt(packet.data.size(), "", 3)
-			+ "   Buff: " + formatInt(g_packet_stream.size(), "", 2) + " / " + ideal_buffer_size +
+			+ "   Sz: " + channelPacketSizes
+			+ "   Buff: " + formatInt(packetStreamSize, "", 2) + " / " + ideal_buffer_size +
 			"  " + logSpecial + "\n");
 	
 	if (nextDelay > 0.5f) {

@@ -27,6 +27,7 @@ last_tcp_heartbeat = datetime.datetime.now()
 last_client_heartbeat = datetime.datetime.now()
 
 fsizeHackIdx = 0
+g_packet_streams = 0 # set automatically on receiving data
 
 def tcp_heartbeat(socket):
 	global last_tcp_heartbeat
@@ -140,6 +141,7 @@ def send_packets_to_plugin(socket, all_packets, force_send):
 	global client_address
 	global response_queue
 	global fsizeHackIdx
+	global g_packet_streams
 	
 	if len(all_packets) == 0:
 		return all_packets
@@ -156,7 +158,7 @@ def send_packets_to_plugin(socket, all_packets, force_send):
 		for packet in all_packets[:buffer_max]:
 			if type(packet) is int:
 				lost += 1
-				f.write('%0.4x00\n' % packet)
+				f.write('%0.4x%s\n' % (packet, '00' * g_packet_streams))
 			else:
 				#print("Wrote %d" % len(packet))
 				f.write(packet)
@@ -186,6 +188,7 @@ def receive_voice_data():
 	global response_queue
 	global buffered_buffers
 	global buffer_max
+	global g_packet_streams
 
 	all_packets = []
 	expectedPacketId = -1
@@ -227,8 +230,22 @@ def receive_voice_data():
 			data = data[6:]
 			
 		packetId = int.from_bytes(data[:2], "big")
+		data = data[2:]
+		
+		hexString = '%04x' % packetId
+		
+		g_packet_streams = 0
+		while len(data) > 0:
+			streamSize = int.from_bytes(data[:2], "big")
+			data = data[2:]
+			hexString += ':' + ''.join(format(x, '02x') for x in data[:streamSize])
+			data = data[streamSize:]
+			g_packet_streams += 1
+			
+		hexString += '\n'
+		
+		#print("Got %d streams" % totalStreams)
 		#print("Got %d (%d bytes)" % (packetId, len(data)))
-		hexString = ('%04x' % packetId) + ''.join(format(x, '02x') for x in data[2:]) + '\n'
 		
 		if is_resent:
 			# got a resent packet, which we asked for earlier

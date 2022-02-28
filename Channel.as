@@ -16,8 +16,8 @@ class Channel {
 	array<Song@> songsLeft; // songs left to play in auto dj queue
 	
 	array<string> mapChangeListeners;
-	
 	array<PacketListener> packetListeners;
+	array<VoicePacket> packetStream;
 	
 	void think() {
 		if (shouldWaitForListeners() > 0) {
@@ -50,7 +50,7 @@ class Channel {
 				}
 				
 				song.loadState = SONG_LOADING;
-				send_voice_server_message("Radio\\en\\100\\" + song.path + " 0:00 " + song.id);
+				playSong(song);
 				
 			} else if (shouldSkipSong.Length() > 0) {
 				stopMusic();
@@ -122,11 +122,6 @@ class Channel {
 				int waitingFor = shouldWaitForListeners();
 				int waitTimeLeft = int(Math.Ceil(g_listenerWaitTime.GetInt() - g_Engine.time));
 				songStr = song.getName() + "\n(waiting " + waitTimeLeft + "s for " + waitingFor + " listeners)";
-			} else {
-				int diff = int(TimeDifference(state.tuneTime, startTime).GetTimeDifference());
-				if (diff > 0) {
-					songStr += "\n(desynced by " + diff + "+ seconds)";
-				}
 			}
 		}
 		
@@ -283,7 +278,7 @@ class Channel {
 	}
 	
 	void playSong(Song@ song) {
-		listenerCommand(song.getMp3PlayCommand());
+		send_voice_server_message("Radio\\en\\100\\" + song.path + " 0:00 " + id + " " + song.id);
 		startTime = DateTime();
 		
 		array<CBasePlayer@> listeners = getChannelListeners();
@@ -312,7 +307,7 @@ class Channel {
 			
 			if (song.loadState == SONG_UNLOADED) {
 				song.loadState = SONG_LOADING;
-				send_voice_server_message("Radio\\en\\100\\" + song.path + " 0:00 " + song.id);
+				playSong(song);
 			}
 			
 			/*
