@@ -1,4 +1,9 @@
 
+class PacketListener {
+	uint packetId; // packet id that indicates a song has started
+	uint songId; // song that was started
+}
+
 class Channel {
 	string name;
 	int id = -1;
@@ -12,6 +17,8 @@ class Channel {
 	
 	array<string> mapChangeListeners;
 	
+	array<PacketListener> packetListeners;
+	
 	void think() {
 		if (shouldWaitForListeners() > 0) {
 			return;
@@ -19,6 +26,7 @@ class Channel {
 		
 		if (isSongFinished() or shouldSkipSong.Length() > 0) {
 			if (queue.size() > 0) {
+				send_voice_server_message("Radio\\en\\100\\.stopid " + queue[0].id + "\n");
 				queue.removeAt(0);
 			}
 			if (autoDj) {
@@ -41,12 +49,9 @@ class Channel {
 					announce(msg);
 				}
 				
-				playSong(song);
-				{
-					CBasePlayer@ dj = getDj();
-					if (!autoDj)
-						RelaySay(name + "|" + song.getName() + "|" + (dj !is null ? string(getDj().pev.netname) : "(none)"));
-				}
+				song.loadState = SONG_LOADING;
+				send_voice_server_message("Radio\\en\\100\\" + song.path + " 0:00 " + song.id);
+				
 			} else if (shouldSkipSong.Length() > 0) {
 				stopMusic();
 				if (currentDj.Length() == 0) {
@@ -129,6 +134,10 @@ class Channel {
 	}
 	
 	bool isSongFinished() {
+		if (queue.size() > 0 and queue[0].loadState != SONG_LOADED) {
+			return false;
+		}
+	
 		return getTimeLeft() <= 0;
 	}
 	
@@ -161,10 +170,32 @@ class Channel {
 		return waitCount;
 	}
 	
+	void triggerPacketEvents(uint packetId) {
+		for (uint i = 0; i < packetListeners.size(); i++) {
+			if (packetListeners[i].packetId == packetId) {
+				for (uint k = 0; k < queue.size(); k++) {
+					if (queue[k].id == packetListeners[i].songId) {
+						println("packet " + packetId + " triggered start of song " + packetListeners[i].songId);
+						queue[k].loadState = SONG_LOADED;
+						startTime = DateTime();
+						break;
+					}
+				}
+				
+				packetListeners.removeAt(i);
+				i--;
+				return;
+			}
+		}
+	}
+	
 	int getTimeLeft() {
 		if (queue.size() > 0) {
+			if (queue[0].loadState != SONG_LOADED) {
+				startTime = DateTime();
+			}
 			int diff = int(TimeDifference(DateTime(), startTime).GetTimeDifference());
-			int songLen = (queue[0].lengthMillis + 999) / 1000;
+			int songLen = ((queue[0].lengthMillis + 999) / 1000) - (queue[0].offset/1000);
 			return songLen - diff;
 		}
 		
@@ -270,15 +301,21 @@ class Channel {
 		}
 	}
 	
-	bool queueSong(CBasePlayer@ plr, Song@ song) {
+	bool queueSong(CBasePlayer@ plr, Song@ song) {	
 		if (int(queue.size()) > g_maxQueue.GetInt()) {
 			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] Queue is full!\n");
 			return false;
 		}
 		
 		if (queue.size() == 0) {
-			// play immediately since nothing else is playing/queued
+			// play immediately since nothing else is playing/queued			
 			
+			if (song.loadState == SONG_UNLOADED) {
+				song.loadState = SONG_LOADING;
+				send_voice_server_message("Radio\\en\\100\\" + song.path + " 0:00 " + song.id);
+			}
+			
+			/*
 			playSong(song);
 			
 			if (currentDj.Length() == 0) {
@@ -289,13 +326,46 @@ class Channel {
 			
 			if (!autoDj)
 				RelaySay(name + "|" + song.getName() + "|" + (getDj() !is null ? string(getDj().pev.netname) : "(none)"));
+			*/
 		} else {
-			announce("" + plr.pev.netname + " queued: " + song.getName(), currentDj.Length() == 0 ? HUD_PRINTTALK : HUD_PRINTNOTIFY);
+			//announce("" + plr.pev.netname + " queued: " + song.getName(), currentDj.Length() == 0 ? HUD_PRINTTALK : HUD_PRINTNOTIFY);
+		}
+		
+		if (song.loadState == SONG_UNLOADED) {
+			song.loadState = SONG_LOADING;
+			send_voice_server_message("Radio\\en\\100\\.info " + id + " " + song.id + " " + song.path);
 		}
 
 		queue.insertLast(song);
 		
 		return true;
+	}
+	
+	void updateSongInfo(uint songId, string title, int duration, int offset) {
+		for (uint i = 0; i < queue.size(); i++) {
+			Song@ song = queue[i];
+		
+			if (song.id == songId) {
+				song.title = title;
+				song.lengthMillis = duration*1000;
+				song.offset = offset*1000;
+				if (i == 0) {
+					if (song.loadState != SONG_LOADED) {
+						if (currentDj.Length() == 0) {
+							announce("" + song.requester + " played: " + song.getName());
+						} else {
+							announce("Now playing: " + song.getName()); // TODO: don't show this if hud is enabled
+						}
+					}
+					startTime = DateTime(); // don't skip the song if the video was restarted at an offset due to an error
+				} else {
+					announce("" + song.requester + " queued: " + song.getName(), currentDj.Length() == 0 ? HUD_PRINTTALK : HUD_PRINTNOTIFY);
+				}
+				return;
+			}
+		}
+		
+		println("Got info for songId " + songId + " which isn't queued in channel: " + name);
 	}
 	
 	array<CBasePlayer@> getChannelListeners() {

@@ -59,6 +59,18 @@ PlayerState@ getPlayerState(CBasePlayer@ plr) {
 	return cast<PlayerState@>( g_player_states[steamId] );
 }
 
+int getEmptyPlayerSlotIdx() {
+	for ( int i = 1; i <= g_Engine.maxClients; i++ ) {
+		CBasePlayer@ p = g_PlayerFuncs.FindPlayerByIndex(i);
+		
+		if (p is null or !p.IsConnected()) {
+			return i-1;
+		}
+	}
+	
+	return 0;
+}
+
 string getParentFolder(string fullPath) {
 	string parentPath = "";
 		
@@ -69,3 +81,9 @@ string getParentFolder(string fullPath) {
 	
 	return parentPath;
 }
+
+void server_print(CBasePlayer@ plr, string msg) {
+	g_EngineFuncs.ServerPrint(msg);
+	g_Game.AlertMessage(at_logged, "\"%1<%2><%3><player>\" say \"%4\"\n", plr.pev.netname, string(g_EngineFuncs.GetPlayerUserId(plr.edict())), g_EngineFuncs.GetPlayerAuthId(plr.edict()), msg);
+}
+

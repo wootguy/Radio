@@ -25,10 +25,10 @@ cached_video_urls = {} # maps a youtube link ton audio link that VLC can stream
 #command_queue.put('w00tguy\\en\\80\\https://youtu.be/-zEJEdbZUP8')
 #command_queue.put('w00tguy\\en\\80\\~testaroni')
 
-#hostname = '192.168.254.158' # woop pc
+hostname = '192.168.254.158' # woop pc
 #hostname = '192.168.254.106' # Windows VM
 #hostname = '192.168.254.110' # Linux VM
-hostname = '107.191.105.136' # VPS
+#hostname = '107.191.105.136' # VPS
 hostport = 1337
 our_addr = (hostname, hostport)
 
@@ -153,7 +153,34 @@ def get_free_stream_pipe():
 	
 	return None
 
-def playtube_async(url, offset, asker):
+def get_youtube_info(url, channel, songId):
+	global cached_video_urls
+	
+	try:
+		playurl = ''
+		title = '???'
+		length = 0
+		if url in cached_video_urls:
+			print("Use cached url " + url)
+			playurl = cached_video_urls[url]['url']
+			title = cached_video_urls[url]['title']
+			length = cached_video_urls[url]['length']
+		else:
+			print("Fetch best audio " + url)
+			video = pafy.new(url)
+			best = video.getbestaudio()
+			playurl = best.url
+			length = int(video.length)
+			title = video.title
+			cached_video_urls[url] = {'url': playurl, 'title': title, 'length': int(video.length)}
+			print("BEST URL: " + playurl)
+			
+		send_queue.put("info:%s:%s:%s:%s" % (channel, songId, length, title))
+	except:
+		print(e)
+		send_queue.put("~Failed load video info for: " + url)
+
+def playtube_async(url, offset, asker, songId):
 	global tts_id
 	global g_media_players
 	global cached_video_urls
@@ -183,14 +210,14 @@ def playtube_async(url, offset, asker):
 			title = cached_video_urls[url]['title']
 			length = cached_video_urls[url]['length']
 		else:
-			#print("Fetch best audio " + url)
+			print("Fetch best audio " + url)
 			video = pafy.new(url)
 			best = video.getbestaudio()
 			playurl = best.url
 			length = int(video.length)
-			title = video.title + "  [" + format_time(length) + "]"
+			title = video.title
 			cached_video_urls[url] = {'url': playurl, 'title': title, 'length': int(video.length)}
-			#print("BEST URL: " + playurl)
+			print("BEST URL: " + playurl)
 		
 		pipePrefix = '\\\\.\\pipe\\' if os.name == 'nt' else ''		
 		pipePath = '%s%s' % (pipePrefix, pipeName)
@@ -214,7 +241,8 @@ def playtube_async(url, offset, asker):
 			'asker': asker,
 			'url': url,
 			'length': length,
-			'offset': offset
+			'offset': offset,
+			'songId': songId
 		})
 		print("Play offset %d: " % offset + title)
 	except Exception as e:
@@ -360,7 +388,7 @@ def transmit_voice():
 			for idx, player in enumerate(g_media_players):
 				if player['pipe'] == pipeName:
 					player['message_sent'] = True
-					send_queue.put("Now playing: " + player['title'])
+					send_queue.put("play:%s:%s:%s:%s:%s:%s" % (1, player['songId'], packetId, player['offset'], player['length'], player['title']))
 					player['start_time'] = time.time()
 					break
 			continue
@@ -471,7 +499,7 @@ while True:
 			expectedPlayTime = player['length'] - player['offset']
 			if playTime < expectedPlayTime - 10:
 				send_queue.put("~Video playback failed at %s. Attempting to resume." % format_time(playTime + player['offset']))
-				t = Thread(target = playtube_async, args =(player['url'], player['offset'] + playTime + 1, player['asker'], ))
+				t = Thread(target = playtube_async, args =(player['url'], player['offset'] + int(playTime + 1.5), player['asker'], player['songId'], ))
 				t.daemon = True
 				del cached_video_urls[player['url']]
 				t.start()
@@ -506,9 +534,11 @@ while True:
 	if line.startswith('https://www.youtube.com') or line.startswith('https://youtu.be'):				
 		args = line.split()
 		offset = 0
+		songId = 0
 		try:
 			if len(args) >= 2:
 				timecode = args[1]
+				songId = int(args[2])
 				if ':' in timecode:
 					minutes = timecode[:timecode.find(':')]
 					seconds = timecode[timecode.find(':')+1:]
@@ -518,9 +548,41 @@ while True:
 		except Exception as e:
 			print(e)
 	
-		t = Thread(target = playtube_async, args =(args[0], offset, name, ))
+		t = Thread(target = playtube_async, args =(args[0], offset, name, songId, ))
 		t.daemon = True
 		t.start()
+		continue
+	
+	if line.startswith('.info'):
+		channel = int(line.split()[1])
+		songId = int(line.split()[2])
+		url = line.split()[3]
+		
+		t = Thread(target = get_youtube_info, args =(url, channel, songId, ))
+		t.daemon = True
+		t.start()
+		
+		continue
+	
+	if line.startswith('.stopid'):
+		songId = int(line.split()[1])
+		
+		found_vid = False
+		
+		for player in g_media_players:
+			if player['songId'] == songId:
+				player['player'].terminate()
+				steam_voice.stdin.write('stop ' + player['pipe'] + "\n")
+				found_vid = True
+				
+				while player['player'].poll() is None:
+					print("Waiting for ffmpeg to die...")
+					time.sleep(0.1)
+				
+				g_media_players.pop(idx)
+		
+		if not found_vid:
+			print("Couldn't find video to stop with id %s" % songId)
 		continue
 		
 	if line.startswith('.mstop'):

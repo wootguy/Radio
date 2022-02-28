@@ -3,10 +3,10 @@ from threading import Thread
 
 # "client" that generates the voice data
 #hostname = '47.157.183.178' # twlz
-#hostname = '192.168.254.158' # woop pc
+hostname = '192.168.254.158' # woop pc
 #hostname = '192.168.254.106' # Windows VM
 #hostname = '192.168.254.110' # Linux VM
-hostname = '107.191.105.136' # VPS
+#hostname = '107.191.105.136' # VPS
 hostport = 1337
 client_address = (hostname, hostport)
 
@@ -156,7 +156,7 @@ def send_packets_to_plugin(socket, all_packets, force_send):
 		for packet in all_packets[:buffer_max]:
 			if type(packet) is int:
 				lost += 1
-				f.write('00\n')
+				f.write('%0.4x00\n' % packet)
 			else:
 				#print("Wrote %d" % len(packet))
 				f.write(packet)
@@ -228,7 +228,7 @@ def receive_voice_data():
 			
 		packetId = int.from_bytes(data[:2], "big")
 		#print("Got %d (%d bytes)" % (packetId, len(data)))
-		hexString = ''.join(format(x, '02x') for x in data[2:]) + '\n'
+		hexString = ('%04x' % packetId) + ''.join(format(x, '02x') for x in data[2:]) + '\n'
 		
 		if is_resent:
 			# got a resent packet, which we asked for earlier
