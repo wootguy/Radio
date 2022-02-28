@@ -1,4 +1,5 @@
 class VoicePacket {
+	uint16 id;
 	array<uint8> data;
 }
 
@@ -16,6 +17,9 @@ float g_playback_start_time = 0;
 float g_ideal_next_packet_time = 0;
 int g_packet_idx = 0;
 float g_packet_delay = 0.05f;
+
+string voice_server_file = "scripts/plugins/store/_tovoice.txt";
+const float BUFFER_DELAY = 0.7f; // minimum time for a voice packet to reach players (seems to actually be 4x longer...)
 
 // longer than this and python might overwrite what is currently being read
 // keep this in sync with server.py
@@ -38,24 +42,6 @@ array<uint8> char_to_nibble = {
 	0, 10, 11, 12, 13, 14, 15
 };
 
-HookReturnCode ClientJoin(CBasePlayer@ plr) 
-{
-	g_voice_ent_idx = getEmptyPlayerSlotIdx();
-	return HOOK_CONTINUE;
-}
-
-int getEmptyPlayerSlotIdx() {
-	for ( int i = 1; i <= g_Engine.maxClients; i++ ) {
-		CBasePlayer@ p = g_PlayerFuncs.FindPlayerByIndex(i);
-		
-		if (p is null or !p.IsConnected()) {
-			return i-1;
-		}
-	}
-	
-	return 0;
-}
-
 void load_samples() {
 	File@ file = g_FileSystem.OpenFile(VOICE_FILE, OpenFile::READ);
 
@@ -73,19 +59,125 @@ void load_samples() {
 	}
 }
 
-void handle_micbot_message(string msg) {
+void send_notification(string msg, bool chatNotNotification) {
+	g_Scheduler.SetTimeout("send_notification_delay", BUFFER_DELAY, msg, chatNotNotification);
+}
+
+void send_notification_delay(string msg, bool chatNotNotification) {
+	for ( int i = 1; i <= g_Engine.maxClients; i++ )
+	{
+		CBasePlayer@ plr = g_PlayerFuncs.FindPlayerByIndex(i);
+		
+		if (plr is null or !plr.IsConnected()) {
+			continue;
+		}
+		
+		PlayerState@ state = getPlayerState(plr);
+		if (state.channel != -1 and chatNotNotification) {
+			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, msg);
+		} else {
+			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTNOTIFY, msg);
+		}
+	}
+}
+
+void send_debug_message(string msg) {
+	for ( int i = 1; i <= g_Engine.maxClients; i++ )
+	{
+		CBasePlayer@ plr = g_PlayerFuncs.FindPlayerByIndex(i);
+		
+		if (plr is null or !plr.IsConnected()) {
+			continue;
+		}
+		
+		PlayerState@ state = getPlayerState(plr);
+		if (state.isDebugging) {
+			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, msg);
+		}
+	}
+}
+
+void send_voice_server_message(string msg) {	
+	File@ file = g_FileSystem.OpenFile( voice_server_file, OpenFile::APPEND );
+	
+	if (!file.IsOpen()) {
+		string text = "[Radio] Failed to open: " + voice_server_file + "\n";
+		println(text);
+		g_Log.PrintF(text);
+		return;
+	}
+	
+	print("[VoiceServerOut] " + msg + "\n");
+	file.Write(msg + "\n");
+	file.Close();
+}
+
+void send_voice_server_message(CBasePlayer@ sender, string msg) {
+	PlayerState@ state = getPlayerState(sender);
+	string fmsg = "" + sender.pev.netname + "\\" + state.lang + "\\" + state.pitch + "\\" + msg;
+	send_voice_server_message(fmsg);
+}
+
+void handle_radio_message(string msg) {
+	println("[VoiceServerIn] " + msg);
+
+	if (msg.Find("play") == 0) {
+		array<string> parts = msg.Split(":");
+		int channel = atoi(parts[1]);
+		uint songId = atoi(parts[2]);
+		int packetId = atoi(parts[3]);
+		int offset = atoi(parts[4]);
+		int seconds = atoi(parts[5]);
+		string title = "";
+		
+		for (uint i = 6; i < parts.size(); i++) {
+			if (i != 6) {
+				title = title + ":";
+			}
+			title += parts[i];
+		}
+		
+		PacketListener listener;
+		listener.packetId = packetId;
+		listener.songId = songId;
+		
+		g_channels[channel].updateSongInfo(songId, title, seconds, offset);
+		g_channels[channel].packetListeners.insertLast(listener);
+		
+		return;
+	}
+	
+	if (msg.Find("info") == 0) {
+		array<string> parts = msg.Split(":");
+		int channel = atoi(parts[1]);
+		uint songId = atoi(parts[2]);
+		int seconds = atoi(parts[3]);
+		string title = "";
+		
+		for (uint i = 4; i < parts.size(); i++) {
+			if (i != 4) {
+				title = title + ":";
+			}
+			title += parts[i];
+		}
+		
+		g_channels[channel].updateSongInfo(songId, title, seconds, 0);
+		
+		return;
+	}
+
 	bool chatNotNotify = msg[0] != '~';
 	if (!chatNotNotify) {
 		msg = msg.SubString(1);
 	}
-	send_notification("[MicBot] " + msg + "\n", chatNotNotify);
+	send_notification("[Radio] " + msg + "\n", chatNotNotify);
 }
 
 void finish_sample_load(File@ file) {
 	float loadTime = (g_EngineFuncs.Time() - sample_load_start) + file_check_interval + g_Engine.frametime;
 	
 	if (loadTime > MAX_SAMPLE_LOAD_TIME) {
-		g_PlayerFuncs.ClientPrintAll(HUD_PRINTCONSOLE, "[MicBot] Server can't load samples fast enough (" + loadTime + " / " + MAX_SAMPLE_LOAD_TIME + ")\n");
+		g_PlayerFuncs.ClientPrintAll(HUD_PRINTCONSOLE, "[Radio] Server can't load samples fast enough (" + loadTime + " / " + MAX_SAMPLE_LOAD_TIME + ")\n");
 	}
 	
 	//println("Loaded samples from file in " + loadTime + " seconds");
@@ -110,15 +202,18 @@ void load_packets_from_file(File@ file, bool fastSend) {
 	
 	if (line[0] == 'm') {
 		// server message, not a voice packet
-		handle_micbot_message(line.SubString(1));
+		handle_radio_message(line.SubString(1));
 	} else if (line[0] == 'z') {
 		// random data to change the size of the file
 	} else {
-		uint len = line.Length()/2;
+		uint16 packetId = (char_to_nibble[ uint(line[0]) ] << 12) + (char_to_nibble[ uint(line[1]) ] << 8) +
+						  (char_to_nibble[ uint(line[2]) ] << 4) + (char_to_nibble[ uint(line[3]) ] << 0);
+		uint len = (line.Length()-4)/2;
 
 		VoicePacket packet;
+		packet.id = packetId;
 		
-		for (uint i = 0; i < line.Length()-1; i += 2) {
+		for (uint i = 4; i < line.Length()-1; i += 2) {
 			uint n1 = char_to_nibble[ uint(line[i]) ];
 			uint n2 = char_to_nibble[ uint(line[i + 1]) ];
 			packet.data.insertLast((n1 << 4) + n2);
@@ -148,7 +243,7 @@ void load_packets_from_file(File@ file, bool fastSend) {
 void play_samples(bool buffering) {
 	if (g_packet_stream.size() < 1 or (buffering and g_packet_stream.size() < ideal_buffer_size)) {
 		if (!buffering) {
-			send_debug_message("[MicBot] Buffering voice packets...\n");
+			send_debug_message("[Radio] Buffering voice packets...\n");
 		}
 		
 		g_playback_start_time = g_EngineFuncs.Time();
@@ -162,6 +257,10 @@ void play_samples(bool buffering) {
 	
 	VoicePacket packet = g_packet_stream[0];
 	g_packet_stream.removeAt(0);
+	
+	for (uint i = 0; i < g_channels.size(); i++) {
+		g_channels[i].triggerPacketEvents(packet.id);
+	}
 	
 	int speaker = getEmptyPlayerSlotIdx();
 	
@@ -182,7 +281,7 @@ void play_samples(bool buffering) {
 			}
 			
 			PlayerState@ state = getPlayerState(plr);
-			if (state.isListening) {
+			if (state.channel != -1) {
 				NetworkMessage m(MSG_ONE_UNRELIABLE, NetworkMessages::NetworkMessageType(53), plr.edict());
 					m.WriteByte(g_voice_ent_idx); // entity which is "speaking"
 					m.WriteShort(packet.data.size()); // compressed audio length

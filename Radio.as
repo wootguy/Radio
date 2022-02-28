@@ -3,20 +3,25 @@
 #include "menus"
 #include "songloader"
 #include "util"
-#include "target_cdaudio_radio"
+//#include "target_cdaudio_radio"
 #include "ambient_music_radio"
+#include "FakeMic"
+
+// BIG TODO:
+// - request form should wait for vid info
+// - multi channel mic output
+// - anarchy mode + tts
+// - normalization should be per video, not mixer
+// - show hours in hud
 
 // TODO:
 // - kick inactive DJs (no song for long time)
 // - invite with text message instead of menu
 // - show who else is listening/desynced with music sprites or smth
 // - alt+tab can run twice or smth
-// - pausefix <float> (only run once per sec)
 // - let dj rename channel
 // - invite cooldowns should use datetime
 // - read volume level from ambient_music when scripts are able to read it from the bsp
-// - play on connect if first join
-// - unqueue by pressing again
 
 const string SONG_FILE_PATH = "scripts/plugins/Radio/songs.txt";
 const string MUSIC_PACK_PATH = "scripts/plugins/Radio/music_packs.txt";
@@ -47,6 +52,7 @@ string g_version_check_spr;
 string g_root_path;
 
 array<int> g_player_lag_status;
+uint g_song_id = 1;
 
 dictionary g_level_changers; // don't restart the music for these players on level changes
 
@@ -64,7 +70,7 @@ array<CTextMenu@> g_menus = {
 
 
 class PlayerState {
-	int channel = -1;
+	int channel = 1;
 	DateTime tuneTime; // last time player chose a channel (for displaying desync info)
 	dictionary lastInviteTime; // for invite cooldowns per player and for \everyone
 	float lastRequest; // for request cooldowns
@@ -75,6 +81,11 @@ class PlayerState {
 	bool neverUsedBefore = true;
 	bool playAfterFullyLoaded = false; // should start music when this player fully loads
 	bool sawUpdateNotification = false; // only show the UPDATE NOW sprite once per map
+	bool isDebugging = false;
+	
+	// text-to-speech settings
+	string lang = "en";
+	int pitch = 100;
 	
 	bool shouldInviteCooldown(CBasePlayer@ plr, string id) {
 		float inviteTime = -9999;
@@ -122,15 +133,40 @@ class PlayerState {
 	}
 }
 
+enum SONG_LOAD_STATES {
+	SONG_UNLOADED,
+	SONG_LOADING,
+	SONG_LOADED
+};
+
 class Song {
 	string title;
 	string artist;
-	string path;
+	string path; // file path or youtube url
 	uint lengthMillis; // duration in milliseconds
 	
 	string searchName; // cached version of getName().ToLowercase() for speed
 	
+	int offset;
+	int loadState = SONG_LOADED;
+	uint id = 0; // used to relate messages from the voice server to a song in some channel's queue
+	string requester;
+	
+	string getClippedName(int length) {
+		string name = getName();
+		
+		if (int(name.Length()) > length) {
+			int sz = (length-4) / 2;
+			return name.SubString(0,sz) + " .. " + name.SubString(name.Length()-sz);
+		}
+		
+		return name;
+	}
+	
 	string getName() const {
+		if (artist.Length() == 0) {
+			return title.Length() > 0 ? title : path;
+		}
 		return artist + " - " + title;
 	}
 	
@@ -188,7 +224,7 @@ void PluginInit() {
 		g_channels[i].id = i;
 		
 		if (i == g_channels.size()-1) {
-			g_channels[i].autoDj = true;
+			//g_channels[i].autoDj = true;
 		}
 	}
 	
@@ -210,7 +246,13 @@ void PluginInit() {
 	g_Scheduler.SetInterval("radioThink", 0.5f, -1);
 	g_Scheduler.SetInterval("radioResumeHack", 0.05f, -1);
 	
+	g_voice_ent_idx = getEmptyPlayerSlotIdx();
+	load_samples();
+	play_samples(false);
+	
 	g_player_lag_status.resize(33);
+	
+	send_voice_server_message("Radio\\en\\100\\.mstop");
 }
 
 void MapInit() {
@@ -237,8 +279,8 @@ void MapInit() {
 int g_replaced_cdaudio = 0;
 int g_replaced_music = 0;
 void MapActivate() {
-	g_CustomEntityFuncs.RegisterCustomEntity( "target_cdaudio_radio", "target_cdaudio_radio" );
-	g_CustomEntityFuncs.RegisterCustomEntity( "AmbientMusicRadio::ambient_music_radio", "ambient_music_radio" );
+	//g_CustomEntityFuncs.RegisterCustomEntity( "target_cdaudio_radio", "target_cdaudio_radio" );
+	//g_CustomEntityFuncs.RegisterCustomEntity( "AmbientMusicRadio::ambient_music_radio", "ambient_music_radio" );
 	
 	g_replaced_cdaudio = 0;
 	g_replaced_music = 0;
@@ -334,6 +376,8 @@ HookReturnCode ClientJoin(CBasePlayer@ plr) {
 	// TODO: actually can't do this because it cranks volume up if a fadeout is currently active
 	//g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "[Radio] Your 'mp3fadetime' setting was reset to 2.\n");
 	//clientCommand(plr, "mp3fadetime 2");
+	
+	g_voice_ent_idx = getEmptyPlayerSlotIdx();
 	
 	return HOOK_CONTINUE;
 }
@@ -523,6 +567,8 @@ bool doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 		return true;
 	}
 	
+	string lowerArg = args[0].ToLowercase();
+	
 	if (args.ArgC() > 0 && args[0] == ".radio") {
 	
 		if (args.ArgC() == 1) {
@@ -591,9 +637,46 @@ bool doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 				searchStr += " " + args[i];
 			}
 			openMenuSearch(EHandle(plr), searchStr, 0);
+		} else if (args.ArgC() > 1 and args[1] == "debug") {		
+			state.isDebugging = !state.isDebugging;
+			
+			if (state.isDebugging) {
+				g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] Debug mode ON.\n");
+			} else {
+				g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] Debug mode OFF.\n");
+			}
 		}
 		
 		return true;
+	} else if (lowerArg.Find("https://www.youtube.com") == 0 || lowerArg.Find("https://youtu.be") == 0) {	
+	
+		if (state.channel != -1) {			
+			Channel@ chan = @g_channels[state.channel];
+			bool canDj = chan.canDj(plr);
+			
+			Song song;
+			song.path = args[0];
+			song.loadState = SONG_UNLOADED;
+			song.id = g_song_id;
+			song.requester = plr.pev.netname;
+			
+			g_song_id += 1;
+			
+			if (!canDj)  {
+				if (int(chan.queue.size()) >= g_maxQueue.GetInt()) {
+					g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] Can't request now. The queue is full.\n");
+				}
+				else if (!state.shouldRequestCooldown(plr)) {
+					chan.announce("" + plr.pev.netname + " requested: " + song.path);
+					openMenuSongRequest(EHandle(chan.getDj()), plr.pev.netname, song.path, song.path);
+				}
+			}
+			else {			
+				chan.queueSong(plr, song);
+			}
+			
+			return true;
+		}
 	}
 	
 	return false;

@@ -4,8 +4,6 @@ void print(string text) { g_Game.AlertMessage( at_console, text); }
 void println(string text) { print(text + "\n"); }
 
 dictionary g_player_states;
-string voice_server_file = "scripts/plugins/store/_tovoice.txt";
-const float BUFFER_DELAY = 0.7f; // minimum time for a voice packet to reach players (seems to actually be 4x longer...)
 
 class PlayerState {
 	bool isBot = false; // send bot commands to this player?
@@ -294,44 +292,6 @@ void send_voice_server_message(string msg) {
 	
 	file.Write(msg);
 	file.Close();
-}
-
-void send_debug_message(string msg) {
-	for ( int i = 1; i <= g_Engine.maxClients; i++ )
-	{
-		CBasePlayer@ plr = g_PlayerFuncs.FindPlayerByIndex(i);
-		
-		if (plr is null or !plr.IsConnected()) {
-			continue;
-		}
-		
-		PlayerState@ state = getPlayerState(plr);
-		if (state.isDebugging) {
-			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, msg);
-		}
-	}
-}
-
-void send_notification(string msg, bool chatNotNotification) {
-	g_Scheduler.SetTimeout("send_notification_delay", BUFFER_DELAY, msg, chatNotNotification);
-}
-
-void send_notification_delay(string msg, bool chatNotNotification) {
-	for ( int i = 1; i <= g_Engine.maxClients; i++ )
-	{
-		CBasePlayer@ plr = g_PlayerFuncs.FindPlayerByIndex(i);
-		
-		if (plr is null or !plr.IsConnected()) {
-			continue;
-		}
-		
-		PlayerState@ state = getPlayerState(plr);
-		if (state.isListening and chatNotNotification) {
-			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, msg);
-		} else {
-			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTNOTIFY, msg);
-		}
-	}
 }
 
 HookReturnCode ClientSay( SayParameters@ pParams ) {

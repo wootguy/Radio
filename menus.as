@@ -601,7 +601,7 @@ void openMenuEditQueue(EHandle h_plr, int selectedSlot) {
 		g_menus[eidx].AddItem("\\w..\\y", any("main-menu"));
 		
 		for (uint i = 1; i < chan.queue.size(); i++) {
-			string label = "\\w" + chan.queue[i].getName() + "\\y";
+			string label = "\\w" + chan.queue[i].getClippedName(48) + "\\y";
 			
 			// try to keep the menu spacing the same in both edit modes
 			if (i == chan.queue.size()-1) {
@@ -627,7 +627,8 @@ void openMenuEditQueue(EHandle h_plr, int selectedSlot) {
 		
 		for (uint i = 1; i < chan.queue.size(); i++) {
 			string color = int(i) == selectedSlot ? "\\r" : "\\w";
-			label += "\n" + color + "    " + chan.queue[i].getName() + "\\y";
+			string name = int(i) == selectedSlot ? chan.queue[i].getClippedName(120) : chan.queue[i].getClippedName(32);
+			label += "\n" + color + "    " + name + "\\y";
 		}
 		
 		label += "\n\n\\yAction:";
