@@ -42,7 +42,7 @@ array<uint8> char_to_nibble = {
 };
 
 void load_samples() {
-	File@ file = g_FileSystem.OpenFile(VOICE_FILE, OpenFile::READ);
+	File@ file = g_FileSystem.OpenFile(VOICE_FILE, OpenFile::READ);	
 
 	if (file !is null && file.IsOpen()) {
 		if (file.GetSize() == last_file_size) {
@@ -251,14 +251,12 @@ void load_packets_from_file(File@ file, bool fastSend) {
 	
 	float loadTime = (g_EngineFuncs.Time() - sample_load_start) + file_check_interval + g_Engine.frametime;
 	
-	if (g_Engine.frametime > 0.03f || loadTime > MAX_SAMPLE_LOAD_TIME*0.5f) {
+	if (g_Engine.frametime > 0.025f || loadTime > MAX_SAMPLE_LOAD_TIME*0.5f) {
 		// Send the rest of the packets now so the stream doesn't cut out.
-		// Sending too fast doesn't affect the stream quality, but too slow causes static.
-		// Steam voice packets load in at about 20-30 per second.
 		load_packets_from_file(file, true);
 	} else {
 		// Try not to impact frametimes too much.
-		// The game has an annoying stutter when packets are sent all at once.
+		// The game has an annoying stutter when packets are loaded all at once.
 		g_Scheduler.SetTimeout("load_packets_from_file", 0.0f, @file, false);
 	}
 }

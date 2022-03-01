@@ -12,7 +12,6 @@ class Channel {
 	array<Song@> activeSongs; // songs playing at the same time
 	string currentDj; // steam id
 	
-	bool autoDj = false; // play random songs and don't let anyone dj
 	bool spamMode = false; // no DJs allowed. spammers and stoppers fight to the death
 	array<Song@> songsLeft; // songs left to play in auto dj queue
 	
@@ -23,15 +22,10 @@ class Channel {
 	Song songRequest; // song to be requested
 	string requester;
 	
-	array<string> mapChangeListeners;
 	array<PacketListener> packetListeners;
 	array<VoicePacket> packetStream;
 	
-	void think() {
-		if (shouldWaitForListeners() > 0) {
-			return;
-		}
-		
+	void think() {		
 		for (uint i = 0; i < activeSongs.size(); i++) {
 			if (activeSongs[i].isFinished()) {
 				activeSongs.removeAt(i);
@@ -64,7 +58,7 @@ class Channel {
 		params.effect = 0;
 		params.fadeinTime = 0;
 		params.fadeoutTime = 0.5f;
-		params.holdTime = 2.0f;
+		params.holdTime = 1.0f;
 		params.r1 = 255;
 		params.g1 = 255;
 		params.b1 = 255;
@@ -75,9 +69,6 @@ class Channel {
 
 		CBasePlayer@ dj = getDj();
 		string djName = dj !is null ? " - " + dj.pev.netname : "";
-		if (autoDj) {
-			djName = " - " + AUTO_DJ_NAME;
-		}
 		
 		if (isDjReserved()) {
 			int reserveTimeLeft = int(Math.Ceil(g_djReserveTime.GetInt() - g_Engine.time));
@@ -87,25 +78,19 @@ class Channel {
 		string msg = name + djName + " (" + getChannelListeners().size() + " listening)";
 		string songStr = "";
 		
-		if (isWaitingToPlaySong()) {
-			int waitingFor = shouldWaitForListeners();
-			int waitTimeLeft = int(Math.Ceil(g_listenerWaitTime.GetInt() - g_Engine.time));
-			songStr = "(waiting " + waitTimeLeft + "s for " + waitingFor + " listeners)";
-		} else {
-			uint maxLines = 3;
-			
-			for (uint i = 0; i < activeSongs.size() and i < maxLines; i++) {
-				Song@ song = activeSongs[i];
-				if (i > 0) {
-					songStr += "\n";
-				}
-				string timeleft = song.loadState == SONG_LOADED ? formatTime(song.getTimeLeft()) : "(--:--)";
-				songStr += song.getClippedName(96) + "  " + timeleft;
+		uint maxLines = 3;
+		
+		for (uint i = 0; i < activeSongs.size() and i < maxLines; i++) {
+			Song@ song = activeSongs[i];
+			if (i > 0) {
+				songStr += "\n";
 			}
-			
-			if (activeSongs.size() > maxLines) {
-				songStr += "\n+" + (activeSongs.size() - maxLines) + " others";
-			}
+			string timeleft = song.loadState == SONG_LOADED ? formatTime(song.getTimeLeft()) : "(--:--)";
+			songStr += song.getClippedName(96) + "  " + timeleft;
+		}
+		
+		if (activeSongs.size() > maxLines) {
+			songStr += "\n+" + (activeSongs.size() - maxLines) + " others";
 		}
 		
 		g_PlayerFuncs.HudMessage(plr, params, msg + "\n" + songStr);
@@ -137,36 +122,7 @@ class Channel {
 	
 		return true;
 	}
-	
-	bool isWaitingToPlaySong() {
-		return areSongsFinished() and shouldWaitForListeners() > 0;
-	}
-	
-	void rememberListeners() {
-		mapChangeListeners.resize(0);
 		
-		array<CBasePlayer@> listeners = getChannelListeners();
-		for (uint i = 0; i < listeners.size(); i++) {
-			mapChangeListeners.insertLast(getPlayerUniqueId(listeners[i]));
-		}
-	}
-	
-	// returns number of listeners that haven't joined yet
-	int shouldWaitForListeners() {
-		int waitCount = 0;
-		
-		if (g_Engine.time < g_listenerWaitTime.GetInt()) {
-			for (uint i = 0; i < mapChangeListeners.size(); i++) {
-				CBasePlayer@ plr = getPlayerByUniqueId(mapChangeListeners[i]);
-				if (plr is null or !plr.IsConnected() or g_player_lag_status[plr.entindex()] != LAG_NONE) {
-					waitCount++;
-				}
-			}
-		}
-		
-		return waitCount;
-	}
-	
 	void triggerPacketEvents(uint packetId) {
 		for (uint i = 0; i < packetListeners.size(); i++) {
 			if (packetListeners[i].packetId <= packetId) { // TODO: this will break when packet id overflows
@@ -238,11 +194,7 @@ class Channel {
 		return (dj is null or !dj.IsConnected()) and currentDj.Length() > 0 and g_Engine.time < g_djReserveTime.GetInt();
 	}
 	
-	bool canDj(CBasePlayer@ plr) {
-		if (autoDj) {
-			return false;
-		}
-		
+	bool canDj(CBasePlayer@ plr) {		
 		CBasePlayer@ dj = getDj();
 		return (dj is null and !isDjReserved()) or (dj !is null and dj.entindex() == plr.entindex());
 	}
@@ -439,7 +391,8 @@ class Channel {
 			songRequest.offset = offset*1000;
 			
 			announce("" + requester + " requested: " + songRequest.title);
-			openMenuSongRequest(EHandle(getDj()), requester, songRequest.title, id);
+			announce("" + requester + " requested: " + songRequest.path, HUD_PRINTCONSOLE);
+			openMenuSongRequest(EHandle(getDj()), requester, songRequest.getClippedName(64), id);
 			return;
 		}
 		
