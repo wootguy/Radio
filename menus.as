@@ -51,28 +51,20 @@ void callbackMenuRadio(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const 
 	else if (option == "add-song") {
 		g_Scheduler.SetTimeout("openMenuSong", 0.0f, EHandle(plr), "", 0, "");
 	}
-	else if (option == "skip-song") {
+	else if (option == "stop-menu") {
+		if (chan.activeSongs.size() < 1) {
+			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] No videos are playing.\n");
+			g_Scheduler.SetTimeout("openMenuRadio", 0.0f, EHandle(plr));
+			return;
+		}
+		
 		if (!canDj) {
-			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] Only the DJ can skip songs.\n");
+			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] Only the DJ can stop videos.\n");
 			g_Scheduler.SetTimeout("openMenuRadio", 0.0f, EHandle(plr));
 			return;
 		}
 		
-		if (state.shouldSongSkipCooldown(plr)) {
-			g_Scheduler.SetTimeout("openMenuRadio", 0.0f, EHandle(plr));
-			return;
-		}
-		
-		if (chan.activeSongs.size() == 0) {
-			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] No song is playing.\n");
-		}
-		else {
-			chan.shouldSkipSong = plr.pev.netname;
-			chan.think();
-			state.lastSongSkip = g_Engine.time;
-		}
-		
-		g_Scheduler.SetTimeout("openMenuRadio", 0.0f, EHandle(plr));
+		g_Scheduler.SetTimeout("openMenuStopVideo", 0.0f, EHandle(plr));
 	}
 	else if (option == "edit-queue") {
 		if (chan.queue.size() < 1) {
@@ -87,6 +79,12 @@ void callbackMenuRadio(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const 
 		
 		if (chan.isDjReserved()) {
 			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] DJ slot is reserved by someone who hasn't finished joining yet.\n");
+			g_Scheduler.SetTimeout("openMenuRadio", 0.0f, EHandle(plr));
+			return;
+		}
+		
+		if (chan.spamMode) {
+			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] The DJ feature is disabled in this channel.\n");
 			g_Scheduler.SetTimeout("openMenuRadio", 0.0f, EHandle(plr));
 			return;
 		}
@@ -289,6 +287,64 @@ void callbackMenuEditQueue(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, co
 	}
 	else if (option == "edit-queue") {
 		g_Scheduler.SetTimeout("openMenuEditQueue", 0.0f, EHandle(plr), -1);
+	}
+}
+
+void callbackMenuStopVideo(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const CTextMenuItem@ item) {
+	if (item is null or plr is null or !plr.IsConnected()) {
+		return;
+	}
+
+	PlayerState@ state = getPlayerState(plr);
+
+	Channel@ chan = @g_channels[state.channel];
+	bool canDj = chan.canDj(plr);
+
+	string option = "";
+	item.m_pUserData.retrieve(option);
+	
+	if (option.Find("main-menu") == 0) {		
+		g_Scheduler.SetTimeout("openMenuRadio", 0.0f, EHandle(plr));
+	}
+	
+	if (option.Find("stop-") == 0) {
+		if (!canDj) {
+			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] Only the DJ can stop videos.\n");
+			g_Scheduler.SetTimeout("openMenuStopVideo", 0.0f, EHandle(plr));
+			return;
+		}
+			
+		if (state.shouldSongSkipCooldown(plr)) {
+			g_Scheduler.SetTimeout("openMenuStopVideo", 0.0f, EHandle(plr));
+			return;
+		}
+		
+		if (chan.activeSongs.size() == 0) {
+			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] No videos are playing.\n");
+			g_Scheduler.SetTimeout("openMenuStopVideo", 0.0f, EHandle(plr));
+			return;
+		}
+		
+		if (option.Find("stop-last") == 0 || option.Find("stop-first") == 0) {
+			if (chan.activeSongs.size() < 2) {
+				g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] Only one video is playing.\n");
+				g_Scheduler.SetTimeout("openMenuStopVideo", 0.0f, EHandle(plr));
+				return;
+			}
+		}
+		
+		state.lastSongSkip = g_Engine.time;
+		g_Scheduler.SetTimeout("openMenuStopVideo", 0.0f, EHandle(plr));
+		
+		if (option.Find("stop-all") == 0) {		
+			chan.stopMusic(plr, -1, false);
+		} else if (option.Find("stop-last") == 0) {
+			chan.stopMusic(plr, 0, false);
+		} else if (option.Find("stop-first") == 0) {
+			chan.stopMusic(plr, chan.activeSongs.size()-1, false);
+		} else if (option.Find("stop-and-clear-queue") == 0) {
+			chan.stopMusic(plr, -1, true);
+		}
 	}
 }
 
@@ -519,8 +575,8 @@ void openMenuRadio(EHandle h_plr) {
 	if (!chan.autoDj) {
 		//g_menus[eidx].AddItem("\\w" + (canDj ? "Queue" : "Request") + " song" + "\\y", any("add-song"));
 		g_menus[eidx].AddItem("\\w" + (canDj ? "Edit" : "View") + " queue  " + chan.getQueueCountString() + "\\y", any("edit-queue"));
-		g_menus[eidx].AddItem("\\wSkip song\\y", any("skip-song"));
-		g_menus[eidx].AddItem("\\w" + (isDj ? "Quit DJ" : "Become DJ") + "\\y", any("become-dj"));
+		g_menus[eidx].AddItem("\\wStop video(s)\\y", any("stop-menu"));
+		g_menus[eidx].AddItem((chan.spamMode ? "\\r" : "\\w") + (isDj ? "Quit DJ" : "Become DJ") + "\\y", any("become-dj"));
 		g_menus[eidx].AddItem("\\wInvite\\y", any("invite"));
 	}
 	
@@ -532,6 +588,34 @@ void openMenuRadio(EHandle h_plr) {
 	if (!state.sawUpdateNotification) {
 		g_Scheduler.SetTimeout("showUpdateSprite", 0.2f, h_plr, 0);
 	}
+}
+
+void openMenuStopVideo(EHandle h_plr) {
+	CBasePlayer@ plr = cast<CBasePlayer@>(h_plr.GetEntity());
+	if (plr is null) {
+		return;
+	}
+	
+	int eidx = plr.entindex();
+	PlayerState@ state = getPlayerState(plr);	
+	Channel@ chan = g_channels[state.channel];
+	
+	@g_menus[eidx] = CTextMenu(@callbackMenuStopVideo);
+	g_menus[eidx].SetTitle("\\y" + chan.name + " - Stop video(s)");
+
+	CBasePlayer@ dj = chan.getDj();
+	bool isDjReserved = chan.isDjReserved();
+	bool canDj = chan.canDj(plr);
+	bool isDj = dj !is null and dj.entindex() == plr.entindex();
+
+	g_menus[eidx].AddItem("\\w..\\y", any("main-menu"));
+	g_menus[eidx].AddItem("\\wStop all videos\\y", any("stop-all"));
+	g_menus[eidx].AddItem("\\wStop all videos except the first\\y", any("stop-last"));
+	g_menus[eidx].AddItem("\\wStop all videos except the last\\y", any("stop-first"));
+	g_menus[eidx].AddItem("\\wStop all videos and clear the queue\\y", any("stop-and-clear-queue"));
+	
+	g_menus[eidx].Register();
+	g_menus[eidx].Open(0, 0, plr);
 }
 
 void openMenuChannelSelect(EHandle h_plr) {
@@ -563,7 +647,7 @@ void openMenuChannelSelect(EHandle h_plr) {
 			djName = AUTO_DJ_NAME + " \\d(BOT)";
 		}
 		
-		label += "\n\\y      Current DJ:\\w " + (djName);
+		label += "\n\\y      Current DJ:\\w " + (chan.spamMode ? "\\d(disabled)" : djName);
 		label += "\n\\y      Now Playing:\\w " + chan.getCurrentSongString();
 		
 		label += "\n\\y";

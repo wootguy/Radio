@@ -7,14 +7,17 @@ class PacketListener {
 class Channel {
 	string name;
 	int id = -1;
+	int maxStreams = 2; // max videso that can be played at the same time
 	array<Song@> queue;
 	array<Song@> activeSongs; // songs playing at the same time
 	string currentDj; // steam id
-	string shouldSkipSong = ""; // name of player who skipped if not empty
 	
 	bool autoDj = false; // play random songs and don't let anyone dj
-	bool spamMode = false; // no queue and all requests play immediately
+	bool spamMode = false; // no DJs allowed. spammers and stoppers fight to the death
 	array<Song@> songsLeft; // songs left to play in auto dj queue
+	
+	float emptyTime = 0; // time the channel became inactive
+	bool wasEmpty = false; // true if the channel was doing nothing last update
 	
 	array<string> mapChangeListeners;
 	array<PacketListener> packetListeners;
@@ -32,73 +35,32 @@ class Channel {
 			}
 		}
 		
-		if (areSongsFinished() or shouldSkipSong.Length() > 0) {
-			if (autoDj) {
-				if (songsLeft.size() == 0) {
-					generateAutoDjQueue();
-				}
-				queue.insertLast(songsLeft[0]);
-				songsLeft.removeAt(0);
-			}
-			
-			string plural = activeSongs.size() > 1 ? "Songs" : "Song";
-			
-			if (queue.size() > 0) {
-				if (shouldSkipSong.Length() > 0) {
-					stopMusic();
-					
-					string msg;
-					if (currentDj.Length() == 0) {
-						msg = plural + " skipped by " + shouldSkipSong + ". " + msg;
-					} else {
-						msg = plural + " skipped. " + msg;
-					}
-					announce(msg);
-				}
-				
+		if (areSongsFinished()) {			
+			if (queue.size() > 0) {				
 				Song song = queue[0];
 				queue.removeAt(0);
 				playSong(song);
-				
-			} else if (shouldSkipSong.Length() > 0) {
-				stopMusic();
-				if (currentDj.Length() == 0) {
-					announce(plural + " stopped by " + shouldSkipSong + ".");
-				} else {
-					announce(plural + " stopped.", HUD_PRINTNOTIFY);
+			} else {
+				if (!wasEmpty) {
+					emptyTime = g_EngineFuncs.Time();
+					wasEmpty = true;
 				}
 			}
-			
-			shouldSkipSong = "";
+		} else {
+			wasEmpty = false;
 		}
-	}
-	
-	void generateAutoDjQueue() {		
-		array<Song@> options;
-		
-		for (uint i = 0; i < g_songs.size(); i++) {
-			if (float(g_songs[i].lengthMillis) > 1000*60*MAX_AUTO_DJ_SONG_LENGTH_MINUTES) {
-				continue; // skip super long songs
-			}
-			options.insertLast(g_songs[i]);
-		}
-		
-		songsLeft.resize(0);
-		while (options.size() > 0) {
-			int choice = Math.RandomLong(0, options.size()-1);
-			songsLeft.insertLast(options[choice]);
-			options.removeAt(choice);
-		}
-		
-		println("Created playlist of " + songsLeft.size() + " songs");
 	}
 	
 	void updateHud(CBasePlayer@ plr, PlayerState@ state) {
+		if (wasEmpty && g_EngineFuncs.Time() - emptyTime > 5.0f) {
+			return;
+		}
+		
 		HUDTextParams params;
 		params.effect = 0;
 		params.fadeinTime = 0;
 		params.fadeoutTime = 0.5f;
-		params.holdTime = 3.0f;
+		params.holdTime = 2.0f;
 		params.r1 = 255;
 		params.g1 = 255;
 		params.b1 = 255;
@@ -161,13 +123,9 @@ class Channel {
 		return label;
 	}
 	
-	bool areSongsFinished() {
-		if (queue.size() > 0 and queue[0].loadState != SONG_LOADED) {
-			return false;
-		}
-		
+	bool areSongsFinished() {		
 		for (uint i = 0; i < activeSongs.size(); i++) {
-			if (activeSongs[i].isFinished()) {
+			if (!activeSongs[i].isFinished()) {
 				return false;
 			}
 		}
@@ -331,14 +289,47 @@ class Channel {
 		}
 	}
 	
-	void stopMusic() {
+	void stopMusic(CBasePlayer@ skipper, int excludeIdx, bool clearQueue) {
 		string cmd = "Radio\\en\\100\\.stopid";
-		for (uint i = 0; i < activeSongs.size(); i++) {
+		
+		int numStopped = activeSongs.size();
+		array<Song@> newActive;
+		for (int i = 0; i < int(activeSongs.size()); i++) {
+			if (i == excludeIdx) {
+				newActive.insertLast(activeSongs[i]);
+				continue;
+			}
 			cmd += " " + activeSongs[i].id;
 		}
 		send_voice_server_message(cmd);
+		activeSongs = newActive;
 		
-		activeSongs.resize(0);
+		if (skipper !is null) {
+			if (clearQueue) {
+				queue.resize(0);
+				announce("" + skipper.pev.netname + " stopped all videos and cleared the queue.");
+			} else if (excludeIdx != -1) {
+				string firstLast = excludeIdx == 0 ? "first" : "last";
+				string msg;
+				if (currentDj.Length() == 0) {
+					msg = "" + skipper.pev.netname + " stopped all but the " + firstLast + " video.";
+				} else {
+					msg = "Stopped all but the " + firstLast + " video.";
+				}
+				announce(msg);
+			} else {
+				string plural = numStopped > 1 ? "Videos" : "Video";
+				string action = queue.size() > 0 ? "skipped" : "stopped";
+				string msg;
+				if (currentDj.Length() == 0) {
+					msg = plural + " " + action + " by " + skipper.pev.netname + ". ";
+				} else {
+					msg = plural + " " + action + ". ";
+				}
+				announce(msg);
+			}
+			
+		}
 
 		array<CBasePlayer@> listeners = getChannelListeners();
 		for (uint i = 0; i < listeners.size(); i++) {
