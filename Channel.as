@@ -19,6 +19,10 @@ class Channel {
 	float emptyTime = 0; // time the channel became inactive
 	bool wasEmpty = false; // true if the channel was doing nothing last update
 	
+	float lastSongRequest = 0;
+	Song songRequest; // song to be requested
+	string requester;
+	
 	array<string> mapChangeListeners;
 	array<PacketListener> packetListeners;
 	array<VoicePacket> packetStream;
@@ -95,7 +99,8 @@ class Channel {
 				if (i > 0) {
 					songStr += "\n";
 				}
-				songStr += song.getClippedName(96) + "  " + formatTime(song.getTimeLeft());
+				string timeleft = song.loadState == SONG_LOADED ? formatTime(song.getTimeLeft()) : "(--:--)";
+				songStr += song.getClippedName(96) + "  " + timeleft;
 			}
 			
 			if (activeSongs.size() > maxLines) {
@@ -242,6 +247,27 @@ class Channel {
 		return (dj is null and !isDjReserved()) or (dj !is null and dj.entindex() == plr.entindex());
 	}
 	
+	bool requestSong(CBasePlayer@ plr, Song song) {
+		PlayerState@ djState = getPlayerState(getDj());
+		if (!djState.requestsAllowed) {
+			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] " + getDj().pev.netname + " doesn't take requests.\n");
+			return false;
+		}
+	
+		
+		if (g_EngineFuncs.Time() - lastSongRequest < SONG_REQUEST_TIMEOUT) {
+			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] " + getDj().pev.netname + " is busy handling another request.\n");
+			return false;
+		}
+	
+		lastSongRequest = g_EngineFuncs.Time();
+		songRequest = song;
+		requester = plr.pev.netname;
+		
+		send_voice_server_message("Radio\\en\\100\\.info " + id + " " + song.id + " " + song.path);
+		return true;
+	}
+	
 	void announce(string msg, HUD messageType=HUD_PRINTTALK, CBasePlayer@ exclude=null) {
 		array<CBasePlayer@> listeners = getChannelListeners();
 		
@@ -265,7 +291,7 @@ class Channel {
 		}
 	}
 	
-	void playSong(Song@ song) {
+	void playSong(Song song) {
 		song.isPlaying = true;
 		song.loadState = SONG_LOADING;
 		activeSongs.insertLast(song);
@@ -337,7 +363,7 @@ class Channel {
 		}
 	}
 	
-	bool queueSong(CBasePlayer@ plr, Song@ song) {	
+	bool queueSong(CBasePlayer@ plr, Song song) {	
 		if (int(queue.size()) > g_maxQueue.GetInt()) {
 			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] Queue is full!\n");
 			return false;
@@ -407,6 +433,15 @@ class Channel {
 			return;
 		}
 		
+		if (songRequest.id == songId) {
+			songRequest.title = title;
+			songRequest.lengthMillis = duration*1000;
+			songRequest.offset = offset*1000;
+			
+			announce("" + requester + " requested: " + songRequest.title);
+			openMenuSongRequest(EHandle(getDj()), requester, songRequest.title, id);
+			return;
+		}
 		
 		println("Got info for songId " + songId + " which isn't queued in channel: " + name);
 	}

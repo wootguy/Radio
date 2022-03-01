@@ -9,7 +9,7 @@
 
 // BIG TODO:
 // - request form should wait for vid info, also fix requests
-// - anarchy mode + tts
+// - tts?
 // - show hours in hud
 // - remove unused code/menus/commands
 // - play at an offset
@@ -22,12 +22,15 @@
 // - let dj rename channel
 // - invite cooldowns should use datetime
 // - read volume level from ambient_music when scripts are able to read it from the bsp
+// - set voice ent to DJ or requester if server is full, instead of player 0
+// - option to block requests from specific player
 
 const string SONG_FILE_PATH = "scripts/plugins/Radio/songs.txt";
 const string MUSIC_PACK_PATH = "scripts/plugins/Radio/music_packs.txt";
 const string AUTO_DJ_NAME = "Gus";
 const float MAX_AUTO_DJ_SONG_LENGTH_MINUTES = 30.0f; // don't play songs longer than this on the auto-dj channel
 const int MAX_SERVER_ACTIVE_SONGS = 16;
+const int SONG_REQUEST_TIMEOUT = 20;
 
 CCVar@ g_inviteCooldown;
 CCVar@ g_requestCooldown;
@@ -82,6 +85,7 @@ class PlayerState {
 	bool playAfterFullyLoaded = false; // should start music when this player fully loads
 	bool sawUpdateNotification = false; // only show the UPDATE NOW sprite once per map
 	bool isDebugging = false;
+	bool requestsAllowed = true;
 	
 	// text-to-speech settings
 	string lang = "en";
@@ -292,6 +296,10 @@ void MapInit() {
 		state.lastDjToggle = -9999;
 		state.lastSongSkip = -9999;
 		state.sawUpdateNotification = false;
+	}
+	
+	for (uint i = 0; i < g_channels.size(); i++) {
+		g_channels[i].lastSongRequest = 0;
 	}
 }
 
@@ -690,8 +698,9 @@ bool doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 					g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] Can't request now. The queue is full.\n");
 				}
 				else if (!state.shouldRequestCooldown(plr)) {
-					chan.announce("" + plr.pev.netname + " requested: " + song.path);
-					openMenuSongRequest(EHandle(chan.getDj()), plr.pev.netname, song.path, song.path);
+					if (chan.requestSong(plr, song)) {
+						state.lastRequest = g_Engine.time;
+					}
 				}
 			}
 			else {
