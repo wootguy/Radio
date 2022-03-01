@@ -48,9 +48,6 @@ void callbackMenuRadio(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const 
 	else if (option == "main-menu") {		
 		g_Scheduler.SetTimeout("openMenuRadio", 0.0f, EHandle(plr));
 	}
-	else if (option == "add-song") {
-		g_Scheduler.SetTimeout("openMenuSong", 0.0f, EHandle(plr), "", 0, "");
-	}
 	else if (option == "stop-menu") {
 		if (chan.activeSongs.size() < 1) {
 			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] No videos are playing.\n");
@@ -114,8 +111,16 @@ void callbackMenuRadio(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const 
 	else if (option == "invite") {		
 		g_Scheduler.SetTimeout("openMenuInvite", 0.0f, EHandle(plr));
 	}
+	else if (option == "hud") {
+		state.showHud = !state.showHud;
+		
+		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] HUD " + (state.showHud ? "enabled" : "disabled") + ".\n");
+		
+		g_Scheduler.SetTimeout("openMenuRadio", 0.0f, EHandle(plr));
+	}
 	else if (option == "help") {
-		g_Scheduler.SetTimeout("openMenuHelp", 0.0f, EHandle(plr));
+		showConsoleHelp(plr, true);
+		g_Scheduler.SetTimeout("openMenuRadio", 0.0f, EHandle(plr));
 	} else {
 		if (state.neverUsedBefore) {
 			state.neverUsedBefore = false;
@@ -160,7 +165,7 @@ void callbackMenuChannelSelect(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber
 	}
 }
 
-void callbackMenuSong(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const CTextMenuItem@ item) {
+void callbackMenuRequest(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const CTextMenuItem@ item) {
 	if (item is null or plr is null or !plr.IsConnected()) {
 		return;
 	}
@@ -411,130 +416,7 @@ void callbackMenuInvite(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const
 	}
 }
 
-void callbackMenuHelp(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const CTextMenuItem@ item) {
-	if (item is null or plr is null or !plr.IsConnected()) {
-		return;
-	}
 
-	PlayerState@ state = getPlayerState(plr);
-
-	Channel@ chan = @g_channels[state.channel];
-
-	string option = "";
-	item.m_pUserData.retrieve(option);
-	
-	if (option == "restart-music") {
-		if (chan.queue.size() > 0) {
-			Song@ song = chan.queue[0];
-			clientCommand(plr, song.getMp3PlayCommand());
-			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "Now playing: " + song.getName() + "\n");
-		} else {
-			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] There is no music playing on " + chan.name + "\n");
-		}
-		g_Scheduler.SetTimeout("openMenuHelp", 0.0f, EHandle(plr));
-	}
-	else if (option == "download-pack") {
-		g_Scheduler.SetTimeout("openMenuDownload", 0.0f, EHandle(plr));
-	}
-	else if (option == "help-commands") {
-		showConsoleHelp(plr, true);
-		g_Scheduler.SetTimeout("openMenuHelp", 0.0f, EHandle(plr));
-	}
-	else if (option == "test-install") {
-		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] You should be hearing a text-to-speech voice now. If not, increase music volume in Options -> Audio.\n");
-		
-		Song testSong = Song();
-		testSong.path = g_version_check_file;
-		
-		clientCommand(plr, testSong.getMp3PlayCommand());
-		g_Scheduler.SetTimeout("openMenuHelp", 0.0f, EHandle(plr));
-	}
-	else if (option == "main-menu") {		
-		g_Scheduler.SetTimeout("openMenuRadio", 0.0f, EHandle(plr));
-	}
-}
-
-void callbackMenuDownload(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const CTextMenuItem@ item) {
-	if (item is null or plr is null or !plr.IsConnected()) {
-		return;
-	}
-
-	PlayerState@ state = getPlayerState(plr);
-
-	Channel@ chan = @g_channels[state.channel];
-
-	string option = "";
-	item.m_pUserData.retrieve(option);
-	
-	if (option.Find("download-") == 0) {
-		int slot = atoi(option.SubString(9));
-		
-		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] Download link is below. You can copy it from the console. Extract to svencoop_downloads/\n\n");
-		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, g_music_packs[slot].link + "\n\n");
-		
-		g_Scheduler.SetTimeout("openMenuHelp", 0.0f, EHandle(plr));
-	}
-	else if (option == "help") {		
-		g_Scheduler.SetTimeout("openMenuHelp", 0.0f, EHandle(plr));
-	}
-}
-
-
-
-// Will show an "UPDATE NOW!!!!" sprite if the player doesn't have the latest version of the pack.
-// When installing the new pack, the sprite file is overwritten with an invisble sprite.
-void showUpdateSprite(EHandle h_plr, int stage) {
-	CBasePlayer@ plr = cast<CBasePlayer@>(h_plr.GetEntity());
-	if (plr is null) {
-		return;
-	}
-	
-	HUDSpriteParams params;
-	params.channel = 0;
-	params.spritename = "../" + g_root_path + g_version_check_spr;
-	params.flags = HUD_SPR_MASKED | HUD_ELEM_ABSOLUTE_X | HUD_ELEM_SCR_CENTER_X;
-	params.holdTime = 99999.0f;
-	params.color1 = RGBA( 255, 255, 255, 255 );
-	params.channel = 0;
-	params.frame = 0;
-	params.x = 0;
-	params.y = 0.15;
-	
-	params.color2 = RGBA( 255, 0, 255, 255 );
-	params.effect = HUD_EFFECT_COSINE;
-	params.fxTime = 0.5f;
-	params.holdTime = 6.5f;
-	params.fadeoutTime = 0.5f;
-	
-	PlayerState@ state = getPlayerState(plr);	
-	state.sawUpdateNotification = true;
-	
-	if (stage == 1) {
-		g_PlayerFuncs.HudCustomSprite(plr, params);
-		return;
-	}
-	
-	if (stage == 0) {
-		params.holdTime = 5.0f;
-		params.fadeinTime = 0.5f;
-		params.fadeoutTime = 0.5f;
-		params.effect = 0;
-		params.fxTime = 0;
-		params.framerate = 15.0f;
-		params.numframes = 255;
-		params.frame = 1;
-		
-		params.channel = 1;
-		params.x = 150;
-		g_PlayerFuncs.HudCustomSprite(plr, params);
-		
-		params.channel = 2;
-		params.x = -150;
-		g_PlayerFuncs.HudCustomSprite(plr, params);
-	
-		g_Scheduler.SetTimeout("showUpdateSprite", 0.2f, h_plr, 1);
-	}
-}
 
 void openMenuRadio(EHandle h_plr) {
 	CBasePlayer@ plr = cast<CBasePlayer@>(h_plr.GetEntity());
@@ -557,23 +439,14 @@ void openMenuRadio(EHandle h_plr) {
 	g_menus[eidx].AddItem("\\wHelp\\y", any("help"));
 	g_menus[eidx].AddItem("\\wTurn off\\y", any("turn-off"));
 	g_menus[eidx].AddItem("\\wChange channel\\y", any("channels"));
-	
-	if (!chan.autoDj) {
-		//g_menus[eidx].AddItem("\\w" + (canDj ? "Queue" : "Request") + " song" + "\\y", any("add-song"));
-		g_menus[eidx].AddItem("\\w" + (canDj ? "Edit" : "View") + " queue  " + chan.getQueueCountString() + "\\y", any("edit-queue"));
-		g_menus[eidx].AddItem("\\wStop video(s)\\y", any("stop-menu"));
-		g_menus[eidx].AddItem((chan.spamMode ? "\\r" : "\\w") + (isDj ? "Quit DJ" : "Become DJ") + "\\y", any("become-dj"));
-		g_menus[eidx].AddItem("\\wInvite\\y", any("invite"));
-	}
+	g_menus[eidx].AddItem("\\w" + (canDj ? "Edit" : "View") + " queue  " + chan.getQueueCountString() + "\\y", any("edit-queue"));
+	g_menus[eidx].AddItem("\\wStop video(s)\\y", any("stop-menu"));
+	g_menus[eidx].AddItem("\\wToggle HUD\\y", any("hud"));
+	g_menus[eidx].AddItem((chan.spamMode ? "\\r" : "\\w") + (isDj ? "Quit DJ" : "Become DJ") + "\\y", any("become-dj"));
+	g_menus[eidx].AddItem("\\wInvite\\y", any("invite"));
 	
 	g_menus[eidx].Register();
 	g_menus[eidx].Open(0, 0, plr);
-	
-	// Only show the update notification once per map, because it would be confusing
-	// to see this sprite again after updating the pack (it won't be replaced until level change)
-	if (!state.sawUpdateNotification) {
-		g_Scheduler.SetTimeout("showUpdateSprite", 0.2f, h_plr, 0);
-	}
 }
 
 void openMenuStopVideo(EHandle h_plr) {
@@ -629,9 +502,6 @@ void openMenuChannelSelect(EHandle h_plr) {
 		}
 		
 		string djName = dj !is null ? string(dj.pev.netname) : "\\d(none)";
-		if (chan.autoDj) {
-			djName = AUTO_DJ_NAME + " \\d(BOT)";
-		}
 		
 		label += "\n\\y      Current DJ:\\w " + (chan.spamMode ? "\\d(disabled)" : djName);
 		label += "\n\\y      Now Playing:\\w " + chan.getCurrentSongString();
@@ -707,113 +577,6 @@ void openMenuEditQueue(EHandle h_plr, int selectedSlot) {
 	g_menus[eidx].Open(0, 0, plr);
 }
 
-void openMenuSong(EHandle h_plr, string path, int page, string lastChild) {
-	CBasePlayer@ plr = cast<CBasePlayer@>(h_plr.GetEntity());
-	if (plr is null) {
-		return;
-	}
-	
-	int eidx = plr.entindex();
-	PlayerState@ state = getPlayerState(plr);
-	Channel@ chan = g_channels[state.channel];
-	
-	string prefix = "";
-	if (path.Length() > 0) {
-		prefix = path + "/";
-	}
-	
-	string title = "Queue Song  " + chan.getQueueCountString();
-	if (!chan.canDj(plr)) {
-		title = "Request Song";
-	}
-	
-	@g_menus[eidx] = CTextMenu(@callbackMenuSong);
-	g_menus[eidx].SetTitle("\\y" + chan.name + " - " + title + "\\y\n/" + prefix + "    ");	
-	
-	FileNode@ node = getNodeFromPath(path);
-	
-	string upCommand = "main-menu";
-	
-	if (path != "") {
-		string upDir = getParentFolder(path);
-		upCommand = "search-up:" + node.name + ":" + upDir;
-	}
-	
-	g_menus[eidx].AddItem("\\w..\\y", any(upCommand));
-	
-	bool moreThanOnePage = (node.children.size()+1) > 9;
-	bool wentUp = lastChild.Length() > 0;
-	
-	for (uint i = 0; i < node.children.size(); i++) {
-		FileNode@ child = node.children[i];
-		
-		if (moreThanOnePage and i != 0 && i % 6 == 0) {
-			g_menus[eidx].AddItem("\\w..\\y", any(upCommand));
-		}
-		
-		int itemPage = moreThanOnePage ? (i / 6) : 0;
-		
-		if (child.file !is null) {
-			Song@ song = @child.file;			
-			g_menus[eidx].AddItem(chan.getSongMenuLabel(song) + "\\y", any("play:" + itemPage + ":" + song.path));
-		} else {
-			if (wentUp and lastChild == child.name) {
-				page = itemPage;
-			}
-			g_menus[eidx].AddItem("\\w" + child.name + "/\\y", any("search:" + prefix + child.name));
-		}
-	}
-	
-	g_menus[eidx].Register();
-	g_menus[eidx].Open(0, page, plr);
-}
-
-void openMenuSearch(EHandle h_plr, string searchStr, int page) {
-	CBasePlayer@ plr = cast<CBasePlayer@>(h_plr.GetEntity());
-	if (plr is null) {
-		return;
-	}
-
-	int eidx = plr.entindex();
-	PlayerState@ state = getPlayerState(plr);
-	if (state.channel < 0) {
-		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] Join a channel before playing songs!\n");
-		return;
-	}
-	Channel@ chan = g_channels[state.channel];
-	
-	if (chan.autoDj) {
-		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] " + AUTO_DJ_NAME + " doesn't take requests.\n");
-		return;
-	}
-	
-	@g_menus[eidx] = CTextMenu(@callbackMenuSong);
-	
-	string title = "Queue Song  " + chan.getQueueCountString();
-	if (!chan.canDj(plr)) {
-		title = "Request Song";
-	}
-	
-	@g_menus[eidx] = CTextMenu(@callbackMenuSong);
-	g_menus[eidx].SetTitle("\\y" + chan.name + " - " + title + "\\y\nResults for \"" + searchStr + "\"    ");	
-	
-	array<Song@> results = searchSongs(searchStr);
-	
-	if (results.size() == 0) {
-		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] No results for \"" + searchStr + "\"\n");
-		return;
-	}
-	
-	bool moreThanOnePage = results.size() > 9;
-	for (uint i = 0; i < results.size(); i++) {
-		int itemPage = moreThanOnePage ? (i / 7) : 0;
-		g_menus[eidx].AddItem("\\w" + chan.getSongMenuLabel(results[i]) + "\\y", any("playSearch:" + itemPage + ":" + results[i].path + ":" + searchStr));
-	}
-	
-	g_menus[eidx].Register();
-	g_menus[eidx].Open(0, page, plr);
-}
-
 void openMenuInviteRequest(EHandle h_plr, string asker, int channel) {
 	CBasePlayer@ plr = cast<CBasePlayer@>(h_plr.GetEntity());
 	if (plr is null) {
@@ -848,7 +611,7 @@ void openMenuSongRequest(EHandle h_plr, string asker, string songName, int chann
 
 	int eidx = plr.entindex();
 	
-	@g_menus[eidx] = CTextMenu(@callbackMenuSong);
+	@g_menus[eidx] = CTextMenu(@callbackMenuRequest);
 	g_menus[eidx].SetTitle("\\ySong request:\n" + songName + "\n-" + asker + "\n");
 	
 	g_menus[eidx].AddItem("\\wPlay now\\y", any("play-request:" + channelId));
@@ -890,54 +653,6 @@ void openMenuInvite(EHandle h_plr) {
 		}
 		
 		g_menus[eidx].AddItem("\\w" + target.pev.netname + "\\y", any("invite-" + getPlayerUniqueId(target)));
-	}
-	
-	g_menus[eidx].Register();
-	g_menus[eidx].Open(0, 0, plr);
-}
-
-void openMenuHelp(EHandle h_plr) {
-	CBasePlayer@ plr = cast<CBasePlayer@>(h_plr.GetEntity());
-	if (plr is null) {
-		return;
-	}
-
-	int eidx = plr.entindex();
-	PlayerState@ state = getPlayerState(plr);
-	
-	@g_menus[eidx] = CTextMenu(@callbackMenuHelp);
-	g_menus[eidx].SetTitle("\\yRadio Help");
-	
-	g_menus[eidx].AddItem("\\w..\\y", any("main-menu"));
-	g_menus[eidx].AddItem("\\rDownload music pack\\y", any("download-pack"));
-	g_menus[eidx].AddItem("\\wTest installation\\y", any("test-install"));
-	g_menus[eidx].AddItem("\\wRestart music\\y", any("restart-music"));
-	//g_menus[eidx].AddItem("\\wShow command help\\y", any("help-commands"));
-	
-	string label = "\\wShow command help\\y";
-	label += "\n\nMusic pack last updated:\n\\r" + g_music_pack_update_time + "\\y";
-	
-	g_menus[eidx].AddItem(label, any("help-commands"));
-	
-	g_menus[eidx].Register();
-	g_menus[eidx].Open(0, 0, plr);
-}
-
-void openMenuDownload(EHandle h_plr) {
-	CBasePlayer@ plr = cast<CBasePlayer@>(h_plr.GetEntity());
-	if (plr is null) {
-		return;
-	}
-
-	int eidx = plr.entindex();
-	PlayerState@ state = getPlayerState(plr);
-	
-	@g_menus[eidx] = CTextMenu(@callbackMenuDownload);
-	g_menus[eidx].SetTitle("\\yChoose Music Quality");
-	g_menus[eidx].AddItem("\\w..\\y", any("help"));
-	
-	for (uint i = 0; i < g_music_packs.size(); i++) {		
-		g_menus[eidx].AddItem("\\w" + g_music_packs[i].desc + "\\y", any("download-" + i));
 	}
 	
 	g_menus[eidx].Register();

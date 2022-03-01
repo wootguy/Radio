@@ -2,10 +2,19 @@ void print(string text) { g_Game.AlertMessage( at_console, text); }
 void println(string text) { print(text + "\n"); }
 
 string formatTime(int totalSeconds) {
-	int minutes = totalSeconds / 60;
+	int hours = totalSeconds / (60*60);
+	int minutes = (totalSeconds / 60) - hours*60;
 	int seconds = totalSeconds % 60;
-	string secStr = seconds >= 10 ? ("" + seconds) : ("0" + seconds);
-	return "(" + minutes + ":" + secStr + ")";
+	
+	if (hours > 0) {
+		string minStr = minutes >= 10 ? ("" + minutes) : ("0" + minutes);
+		string secStr = seconds >= 10 ? ("" + seconds) : ("0" + seconds);
+		return "(" + hours + ":" + minStr + ":" + secStr + ")";
+	} else {
+		string secStr = seconds >= 10 ? ("" + seconds) : ("0" + seconds);
+		return "(" + minutes + ":" + secStr + ")";
+	}
+	
 }
 
 void clientCommand(CBaseEntity@ plr, string cmd, NetworkMessageDest destType=MSG_ONE) {
@@ -69,17 +78,6 @@ int getEmptyPlayerSlotIdx() {
 	}
 	
 	return 0;
-}
-
-string getParentFolder(string fullPath) {
-	string parentPath = "";
-		
-	int islash = fullPath.FindLastOf("/");
-	if (islash != -1) {
-		parentPath = fullPath.SubString(0, islash);
-	}
-	
-	return parentPath;
 }
 
 void server_print(CBasePlayer@ plr, string msg) {
