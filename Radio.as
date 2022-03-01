@@ -8,10 +8,11 @@
 #include "FakeMic"
 
 // BIG TODO:
-// - request form should wait for vid info
+// - request form should wait for vid info, also fix requests
 // - anarchy mode + tts
-// - normalization should be per video, not mixer
 // - show hours in hud
+// - remove unused code/menus/commands
+// - play at an offset
 
 // TODO:
 // - kick inactive DJs (no song for long time)
@@ -26,7 +27,7 @@ const string SONG_FILE_PATH = "scripts/plugins/Radio/songs.txt";
 const string MUSIC_PACK_PATH = "scripts/plugins/Radio/music_packs.txt";
 const string AUTO_DJ_NAME = "Gus";
 const float MAX_AUTO_DJ_SONG_LENGTH_MINUTES = 30.0f; // don't play songs longer than this on the auto-dj channel
-const int MAX_CHANNEL_ACTIVE_SONGS = 5;
+const int MAX_SERVER_ACTIVE_SONGS = 16;
 
 CCVar@ g_inviteCooldown;
 CCVar@ g_requestCooldown;
@@ -128,7 +129,7 @@ class PlayerState {
 	}
 	
 	bool isRadioListener() {
-		return channel >= 0 and g_channels[channel].activeSongs.size() > 0;
+		return channel >= 0;
 	}
 }
 
@@ -187,7 +188,7 @@ class Song {
 		return songLen - diff;
 	}
 	
-	bool isFinished() {		
+	bool isFinished() {
 		return loadState == SONG_FAILED or (loadState == SONG_LOADED and getTimeLeft() <= 0);
 	}
 }
@@ -238,10 +239,11 @@ void PluginInit() {
 	for (uint i = 0; i < g_channels.size(); i++) {
 		g_channels[i].name = "Channel " + (i+1);
 		g_channels[i].id = i;
+		g_channels[i].maxStreams = 2;
 		
-		if (i == g_channels.size()-1) {
-			//g_channels[i].autoDj = true;
+		if (i == 0) {
 			g_channels[i].spamMode = true;
+			g_channels[i].maxStreams = 12;
 		}
 	}
 	
@@ -694,8 +696,8 @@ bool doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 			}
 			else {
 				if (playNow) {
-					if (chan.activeSongs.size() >= MAX_CHANNEL_ACTIVE_SONGS) {
-						g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] Can't play more than " + MAX_CHANNEL_ACTIVE_SONGS + " videos at the same time\n");
+					if (int(chan.activeSongs.size()) >= chan.maxStreams) {
+						g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] This channel can't play more than " + chan.maxStreams + " videos at the same time.\n");
 					} else {
 						chan.playSong(song);
 					}
