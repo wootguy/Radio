@@ -2,13 +2,9 @@
 #include "Channel"
 #include "menus"
 #include "util"
-//#include "target_cdaudio_radio"
+#include "target_cdaudio_radio"
 #include "ambient_music_radio"
 #include "FakeMic"
-
-// BIG TODO:
-// - tts?
-// - play at an offset
 
 // TODO:
 // - kick inactive DJs (no song for long time)
@@ -20,6 +16,7 @@
 // - read volume level from ambient_music when scripts are able to read it from the bsp
 // - set voice ent to DJ or requester if server is full, instead of player 0
 // - option to block requests from specific player
+// - tts?
 
 const string SONG_FILE_PATH = "scripts/plugins/Radio/songs.txt";
 const string MUSIC_PACK_PATH = "scripts/plugins/Radio/music_packs.txt";
@@ -57,7 +54,7 @@ array<CTextMenu@> g_menus = {
 
 
 class PlayerState {
-	int channel = 0;
+	int channel = -1;
 	dictionary lastInviteTime; // for invite cooldowns per player and for \everyone
 	float lastRequest; // for request cooldowns
 	float lastDjToggle; // for cooldown
@@ -138,6 +135,7 @@ class Song {
 	DateTime startTime;
 	bool isPlaying = false;
 	bool messageSent = false; // was chat message sent about this song being added
+	string args; // playback args (time offset)
 	
 	string getClippedName(int length) {
 		string name = getName();
@@ -200,11 +198,11 @@ void PluginInit() {
 	for (uint i = 0; i < g_channels.size(); i++) {
 		g_channels[i].name = "Channel " + (i+1);
 		g_channels[i].id = i;
-		g_channels[i].maxStreams = 2;
+		g_channels[i].maxStreams = 4;
 		
 		if (i == 0) {
 			g_channels[i].spamMode = true;
-			g_channels[i].maxStreams = 12;
+			g_channels[i].maxStreams = 8;
 		}
 	}
 	
@@ -239,8 +237,8 @@ void MapInit() {
 int g_replaced_cdaudio = 0;
 int g_replaced_music = 0;
 void MapActivate() {
-	//g_CustomEntityFuncs.RegisterCustomEntity( "target_cdaudio_radio", "target_cdaudio_radio" );
-	//g_CustomEntityFuncs.RegisterCustomEntity( "AmbientMusicRadio::ambient_music_radio", "ambient_music_radio" );
+	g_CustomEntityFuncs.RegisterCustomEntity( "target_cdaudio_radio", "target_cdaudio_radio" );
+	g_CustomEntityFuncs.RegisterCustomEntity( "AmbientMusicRadio::ambient_music_radio", "ambient_music_radio" );
 	
 	g_replaced_cdaudio = 0;
 	g_replaced_music = 0;
@@ -381,7 +379,9 @@ void showConsoleHelp(CBasePlayer@ plr, bool showChatMessage) {
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'To queue a video, paste a youtube link in the chat. Use the "say" command in console to do this. Example:\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    say https://www.youtube.com/watch?v=b8HO6hba9ZE\n\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'To bypass the queue, add a "!" before your link. Example:\n');
-	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    say !https://www.youtube.com/watch?v=b8HO6hba9ZEn\n\n');
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    say !https://www.youtube.com/watch?v=b8HO6hba9ZE\n\n');
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'To play a video at a specific time, add a timecode after the link. Example:\n');
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    say !https://www.youtube.com/watch?v=b8HO6hba9ZE 0:27\n\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Can\'t hear anything?\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    Check that you haven\'t disabled voice. "voice_enable" should be set to 1.\n\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Audio is stuttering?\n');
@@ -484,6 +484,7 @@ bool doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 			song.loadState = SONG_UNLOADED;
 			song.id = g_song_id;
 			song.requester = plr.pev.netname;
+			song.args = args[1];
 			
 			g_song_id += 1;
 			

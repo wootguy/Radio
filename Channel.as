@@ -7,7 +7,7 @@ class PacketListener {
 class Channel {
 	string name;
 	int id = -1;
-	int maxStreams = 2; // max videso that can be played at the same time
+	int maxStreams = 4; // max videso that can be played at the same time
 	array<Song@> queue;
 	array<Song@> activeSongs; // songs playing at the same time
 	string currentDj; // steam id
@@ -247,7 +247,7 @@ class Channel {
 		song.isPlaying = true;
 		song.loadState = SONG_LOADING;
 		activeSongs.insertLast(song);
-		send_voice_server_message("Radio\\en\\100\\" + song.path + " 0:00 " + id + " " + song.id);
+		send_voice_server_message("Radio\\en\\100\\" + song.path + " " + id + " " + song.id + " " + song.args);
 		
 		RelaySay(name + "|" + song.getName() + "|" + (getDj() !is null ? string(getDj().pev.netname) : "(none)"));
 		
@@ -316,7 +316,7 @@ class Channel {
 	}
 	
 	bool queueSong(CBasePlayer@ plr, Song song) {	
-		if (int(queue.size()) > g_maxQueue.GetInt()) {
+		if (int(queue.size()) >= g_maxQueue.GetInt()) {
 			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] Queue is full!\n");
 			return false;
 		}
@@ -371,8 +371,10 @@ class Channel {
 				if (!song.messageSent) {
 					if (currentDj.Length() == 0) {
 						announce("" + song.requester + " played: " + song.getName());
+						announce("" + song.requester + " played: " + song.path, HUD_PRINTCONSOLE);
 					} else {
 						announce("Now playing: " + song.getName()); // TODO: don't show this if hud is enabled
+						announce("Now playing: " + song.path, HUD_PRINTCONSOLE);
 					}
 					song.messageSent = true;
 				}
@@ -380,6 +382,7 @@ class Channel {
 			} else if (!song.messageSent) {
 				song.messageSent = true;
 				announce("" + song.requester + " queued: " + song.getName(), currentDj.Length() == 0 ? HUD_PRINTTALK : HUD_PRINTNOTIFY);
+				announce("" + song.requester + " queued: " + song.path, HUD_PRINTCONSOLE);
 			}
 			
 			return;

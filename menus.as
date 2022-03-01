@@ -225,6 +225,17 @@ void callbackMenuEditQueue(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, co
 	string option = "";
 	item.m_pUserData.retrieve(option);
 	
+	if (option == "main-menu") {		
+		g_Scheduler.SetTimeout("openMenuRadio", 0.0f, EHandle(plr));
+		return;
+	}
+	
+	if (!canDj) {
+		g_Scheduler.SetTimeout("openMenuEditQueue", 0.0f, EHandle(plr), -1);
+		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] Only the DJ can edit the queue.\n");
+		return;
+	}
+	
 	if (option.Find("edit-slot-") == 0) {
 		int slot = atoi(option.SubString(10));
 		
@@ -272,9 +283,6 @@ void callbackMenuEditQueue(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, co
 		}
 		
 		g_Scheduler.SetTimeout("openMenuEditQueue", 0.0f, EHandle(plr), -1);
-	}
-	else if (option == "main-menu") {		
-		g_Scheduler.SetTimeout("openMenuRadio", 0.0f, EHandle(plr));
 	}
 	else if (option == "edit-queue") {
 		g_Scheduler.SetTimeout("openMenuEditQueue", 0.0f, EHandle(plr), -1);
