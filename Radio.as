@@ -9,7 +9,6 @@
 
 // BIG TODO:
 // - request form should wait for vid info
-// - multi channel mic output
 // - anarchy mode + tts
 // - normalization should be per video, not mixer
 // - show hours in hud
@@ -27,6 +26,7 @@ const string SONG_FILE_PATH = "scripts/plugins/Radio/songs.txt";
 const string MUSIC_PACK_PATH = "scripts/plugins/Radio/music_packs.txt";
 const string AUTO_DJ_NAME = "Gus";
 const float MAX_AUTO_DJ_SONG_LENGTH_MINUTES = 30.0f; // don't play songs longer than this on the auto-dj channel
+const int MAX_CHANNEL_ACTIVE_SONGS = 5;
 
 CCVar@ g_inviteCooldown;
 CCVar@ g_requestCooldown;
@@ -128,14 +128,15 @@ class PlayerState {
 	}
 	
 	bool isRadioListener() {
-		return channel >= 0 and g_channels[channel].queue.size() > 0;
+		return channel >= 0 and g_channels[channel].activeSongs.size() > 0;
 	}
 }
 
 enum SONG_LOAD_STATES {
 	SONG_UNLOADED,
 	SONG_LOADING,
-	SONG_LOADED
+	SONG_LOADED,
+	SONG_FAILED
 };
 
 class Song {
@@ -150,6 +151,9 @@ class Song {
 	int loadState = SONG_LOADED;
 	uint id = 0; // used to relate messages from the voice server to a song in some channel's queue
 	string requester;
+	DateTime startTime;
+	bool isPlaying = false;
+	bool messageSent = false; // was chat message sent about this song being added
 	
 	string getClippedName(int length) {
 		string name = getName();
@@ -172,6 +176,19 @@ class Song {
 	string getMp3PlayCommand() {
 		string mp3 = path; // don't modify the original var
 		return "mp3 play " + g_root_path + mp3.Replace(".mp3", "");
+	}
+	
+	int getTimeLeft() {
+		if (loadState != SONG_LOADED) {
+			startTime = DateTime();
+		}
+		int diff = int(TimeDifference(DateTime(), startTime).GetTimeDifference());
+		int songLen = ((lengthMillis + 999) / 1000) - (offset/1000);
+		return songLen - diff;
+	}
+	
+	bool isFinished() {		
+		return loadState == SONG_FAILED or (loadState == SONG_LOADED and getTimeLeft() <= 0);
 	}
 }
 
@@ -224,6 +241,7 @@ void PluginInit() {
 		
 		if (i == g_channels.size()-1) {
 			//g_channels[i].autoDj = true;
+			g_channels[i].spamMode = true;
 		}
 	}
 	
@@ -646,14 +664,19 @@ bool doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 		}
 		
 		return true;
-	} else if (lowerArg.Find("https://www.youtube.com") == 0 || lowerArg.Find("https://youtu.be") == 0) {	
-	
-		if (state.channel != -1) {			
+	} else if (lowerArg.Find("https://www.youtube.com") <= 1 || lowerArg.Find("https://youtu.be") <= 1) {
+		if (state.channel != -1) {
 			Channel@ chan = @g_channels[state.channel];
 			bool canDj = chan.canDj(plr);
 			
+			string url = args[0];
+			bool playNow = url[0] == '!';
+			if (playNow) {
+				url = url.SubString(1);
+			}
+			
 			Song song;
-			song.path = args[0];
+			song.path = url;
 			song.loadState = SONG_UNLOADED;
 			song.id = g_song_id;
 			song.requester = plr.pev.netname;
@@ -669,8 +692,16 @@ bool doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 					openMenuSongRequest(EHandle(chan.getDj()), plr.pev.netname, song.path, song.path);
 				}
 			}
-			else {			
-				chan.queueSong(plr, song);
+			else {
+				if (playNow) {
+					if (chan.activeSongs.size() >= MAX_CHANNEL_ACTIVE_SONGS) {
+						g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] Can't play more than " + MAX_CHANNEL_ACTIVE_SONGS + " videos at the same time\n");
+					} else {
+						chan.playSong(song);
+					}
+				} else {
+					chan.queueSong(plr, song);
+				}
 			}
 			
 			return true;

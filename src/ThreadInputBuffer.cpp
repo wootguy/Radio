@@ -3,6 +3,7 @@
 #include "stream_mp3.h"
 #include <thread>
 #include <cstring>
+#include <math.h>
 #include "util.h"
 
 using namespace std;
@@ -151,9 +152,12 @@ void ThreadInputBuffer::clear()
 {
 	int val = status.getValue();
 	readPos = bufferSize;
+
 	if (val == TIB_FULL || val == TIB_FINISHED) {
 		status.setValue(TIB_WRITE);
 		writePos = 0;
+		memset(writeBuffer, 0, bufferSize);
+		memset(readBuffer, 0, bufferSize);
 	}
 	else {
 		fprintf(stderr, "Could not reset %d\n", val);

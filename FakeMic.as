@@ -120,7 +120,7 @@ void send_voice_server_message(CBasePlayer@ sender, string msg) {
 void handle_radio_message(string msg) {
 	println("[VoiceServerIn] " + msg);
 
-	if (msg.Find("play") == 0) {
+	if (msg.Find("play:") == 0) {
 		array<string> parts = msg.Split(":");
 		int channel = atoi(parts[1]);
 		uint songId = atoi(parts[2]);
@@ -146,7 +146,7 @@ void handle_radio_message(string msg) {
 		return;
 	}
 	
-	if (msg.Find("info") == 0) {
+	if (msg.Find("info:") == 0) {
 		array<string> parts = msg.Split(":");
 		int channel = atoi(parts[1]);
 		uint songId = atoi(parts[2]);
@@ -161,6 +161,16 @@ void handle_radio_message(string msg) {
 		}
 		
 		g_channels[channel].updateSongInfo(songId, title, seconds, 0);
+		
+		return;
+	}
+	
+	if (msg.Find("fail:") == 0) {
+		array<string> parts = msg.Split(":");
+		int channel = atoi(parts[1]);
+		uint songId = atoi(parts[2]);
+		
+		g_channels[channel].cancelSong(songId);
 		
 		return;
 	}
