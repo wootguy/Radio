@@ -545,9 +545,9 @@ while True:
 		songId = 0
 		try:
 			if len(args) >= 3:
-				timecode = args[1]
-				channelId = int(args[2])
-				songId = int(args[3])
+				channelId = int(args[1])
+				songId = int(args[2])
+				timecode = args[3]
 				if ':' in timecode:
 					minutes = timecode[:timecode.find(':')]
 					seconds = timecode[timecode.find(':')+1:]
