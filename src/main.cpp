@@ -9,7 +9,6 @@
 #include "util.h"
 #include "CommandQueue.h"
 #include <cstring>
-#include <math.h> 
 #include "pid.h"
 
 using namespace std;
@@ -126,7 +125,7 @@ int main(int argc, const char **argv)
 			activeStreams[mixerChannel]++;
 
 			for (int k = 0; k < samplesPerPacket; k++) {
-				mixBuffer[mixerChannel][k] += (float)inBuffer[k] / 32768.0f;
+				mixBuffer[mixerChannel][k] += ((float)inBuffer[k] / 32768.0f)*inputStreams[i]->volume;
 			}
 		}
 		inputStreams = newStreams; // remove any finished streamds

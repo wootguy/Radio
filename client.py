@@ -25,10 +25,10 @@ cached_video_urls = {} # maps a youtube link ton audio link that VLC can stream
 #command_queue.put('w00tguy\\en\\80\\https://youtu.be/-zEJEdbZUP8')
 #command_queue.put('w00tguy\\en\\80\\~testaroni')
 
-hostname = '192.168.254.158' # woop pc
+#hostname = '192.168.254.158' # woop pc
 #hostname = '192.168.254.106' # Windows VM
 #hostname = '192.168.254.110' # Linux VM
-#hostname = '107.191.105.136' # VPS
+hostname = '107.191.105.136' # VPS
 hostport = 1337
 our_addr = (hostname, hostport)
 
@@ -173,7 +173,7 @@ def get_youtube_info(url, channel, songId):
 			length = int(video.length)
 			title = video.title
 			cached_video_urls[url] = {'url': playurl, 'title': title, 'length': int(video.length)}
-			print("BEST URL: " + playurl)
+			#print("BEST URL: " + playurl)
 			
 		send_queue.put("info:%s:%s:%s:%s" % (channel, songId, length, title))
 	except:
@@ -191,7 +191,8 @@ def playtube_async(url, offset, asker, channelId, songId):
 	#pipe_mutex.acquire()
 	pipeName = get_free_stream_pipe()
 	if not pipeName:
-		send_queue.put("Can't overlap more than %s videos." % g_pipe_count)
+		send_queue.put("Server unable to stream more than %d videos at once." % g_pipe_count)
+		send_queue.put("fail:%s:%s" % (channelId, songId))
 		return
 	g_reserved_pipes.add(pipeName)
 	#pipe_mutex.release()
@@ -217,7 +218,7 @@ def playtube_async(url, offset, asker, channelId, songId):
 			length = int(video.length)
 			title = video.title
 			cached_video_urls[url] = {'url': playurl, 'title': title, 'length': int(video.length)}
-			print("BEST URL: " + playurl)
+			#print("BEST URL: " + playurl)
 		
 		pipePrefix = '\\\\.\\pipe\\' if os.name == 'nt' else ''		
 		pipePath = '%s%s' % (pipePrefix, pipeName)
@@ -250,6 +251,7 @@ def playtube_async(url, offset, asker, channelId, songId):
 	except Exception as e:
 		print(e)
 		
+		send_queue.put("fail:%s:%s" % (channelId, songId))
 		send_queue.put("failed to play a video from " + str(asker) + ".")
 		t = Thread(target = play_tts, args =('', str(e), tts_id, "en", 100, False, ))
 		t.daemon = True
@@ -401,7 +403,7 @@ def transmit_voice():
 			packet += numBytes.to_bytes(2, 'big') + bytes.fromhex(stream)
 			#print("STREAM %d (%d): %s" % (idx, len(stream), stream))
 			
-		print("Send %d (%d bytes)" % (packetId, len(packet)))
+		#print("Send %d (%d bytes)" % (packetId, len(packet)))
 		
 		if server_addr:
 			udp_socket.sendto(packet, server_addr)
@@ -488,9 +490,14 @@ while True:
 		isRunning = player['player'].poll() is None
 		if not isRunning:
 			g_media_players.pop(idx)
+			if 'was_stopped' in player:
+				continue
+			
 			if not player['message_sent']:
+				send_queue.put("fail:%s:%s" % (player['channelId'], player['songId']))
 				send_queue.put("Failed to play a video from %s" % player['asker'])
-				del cached_video_urls[player['url']]
+				if player['url'] in cached_video_urls:
+					del cached_video_urls[player['url']]
 				continue
 			
 			playTime = time.time() - player['start_time']
@@ -499,11 +506,13 @@ while True:
 				send_queue.put("~Video playback failed at %s. Attempting to resume." % format_time(playTime + player['offset']))
 				t = Thread(target = playtube_async, args =(player['url'], player['offset'] + int(playTime + 1.5), player['asker'], player['channelId'], player['songId'], ))
 				t.daemon = True
-				del cached_video_urls[player['url']]
+				if player['url'] in cached_video_urls:
+					del cached_video_urls[player['url']]
 				t.start()
 				continue
 			
 			print("Finished playing video (%.1f left)" % (expectedPlayTime - playTime))
+			break
 	
 	line = None
 	try:
@@ -535,7 +544,7 @@ while True:
 		channelId = 0
 		songId = 0
 		try:
-			if len(args) >= 2:
+			if len(args) >= 3:
 				timecode = args[1]
 				channelId = int(args[2])
 				songId = int(args[3])
@@ -565,24 +574,18 @@ while True:
 		continue
 	
 	if line.startswith('.stopid'):
-		songId = int(line.split()[1])
+		songIds = []
+		for part in line.split()[1:]:
+			songIds.append(int(part))
 		
-		found_vid = False
-		
-		for player in g_media_players:
-			if player['songId'] == songId:
+		for idx, player in enumerate(g_media_players):
+			if player['songId'] in songIds:
 				player['player'].terminate()
+				player['was_stopped'] = True
 				steam_voice.stdin.write('stop ' + player['pipe'] + "\n")
 				found_vid = True
-				
-				while player['player'].poll() is None:
-					print("Waiting for ffmpeg to die...")
-					time.sleep(0.1)
-				
-				g_media_players.pop(idx)
-		
-		if not found_vid:
-			print("Couldn't find video to stop with id %s" % songId)
+				print("Song %d was stopped" % player['songId'])
+
 		continue
 		
 	if line.startswith('.mstop'):

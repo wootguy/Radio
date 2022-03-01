@@ -21,7 +21,7 @@ void callbackMenuRadio(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const 
 	}
 	else if (option == "turn-off") {
 		if (state.channel >= 0) {
-			chan.handlePlayerLeave(plr);
+			chan.handlePlayerLeave(plr, -1);
 		}
 		
 		state.channel = -1;
@@ -63,23 +63,24 @@ void callbackMenuRadio(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const 
 			return;
 		}
 		
-		if (chan.queue.size() == 0) {
+		if (chan.activeSongs.size() == 0) {
 			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] No song is playing.\n");
 		}
 		else {
 			chan.shouldSkipSong = plr.pev.netname;
+			chan.think();
 			state.lastSongSkip = g_Engine.time;
 		}
 		
 		g_Scheduler.SetTimeout("openMenuRadio", 0.0f, EHandle(plr));
 	}
 	else if (option == "edit-queue") {
-		if (chan.queue.size() <= 1) {
+		if (chan.queue.size() < 1) {
 			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] The queue is empty.\n");
 			g_Scheduler.SetTimeout("openMenuRadio", 0.0f, EHandle(plr));
 			return;
 		}
-		g_Scheduler.SetTimeout("openMenuEditQueue", 0.0f, EHandle(plr), 0);
+		g_Scheduler.SetTimeout("openMenuEditQueue", 0.0f, EHandle(plr), -1);
 	}
 	else if (option == "become-dj") {
 		CBasePlayer@ currentDj = chan.getDj();
@@ -147,16 +148,12 @@ void callbackMenuChannelSelect(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber
 		}
 		
 		if (oldChannel >= 0) {
-			g_channels[oldChannel].handlePlayerLeave(plr);
+			g_channels[oldChannel].handlePlayerLeave(plr, state.channel);
 		}
 		
 		bool musicIsPlaying = g_channels[state.channel].queue.size() > 0;
-		
-		if (musicIsPlaying) {
-			clientCommand(plr, g_channels[state.channel].queue[0].getMp3PlayCommand());
-		} else {
-			clientCommand(plr, "mp3 stop");
-		}
+
+		clientCommand(plr, "stopsound");
 		
 		AmbientMusicRadio::toggleMapMusic(plr, !musicIsPlaying);
 		
@@ -252,7 +249,7 @@ void callbackMenuEditQueue(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, co
 		int slot = atoi(option.SubString(8));
 		int newSlot = slot;
 		
-		if (slot > 1) {
+		if (slot > 0) {
 			chan.announce("" + plr.pev.netname + " moved up: " + chan.queue[slot].getName(), HUD_PRINTNOTIFY);
 			Song@ temp = chan.queue[slot];
 			@chan.queue[slot] = @chan.queue[slot-1];
@@ -285,13 +282,13 @@ void callbackMenuEditQueue(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, co
 			chan.queue.removeAt(slot);
 		}
 		
-		g_Scheduler.SetTimeout("openMenuEditQueue", 0.0f, EHandle(plr), 0);
+		g_Scheduler.SetTimeout("openMenuEditQueue", 0.0f, EHandle(plr), -1);
 	}
 	else if (option == "main-menu") {		
 		g_Scheduler.SetTimeout("openMenuRadio", 0.0f, EHandle(plr));
 	}
 	else if (option == "edit-queue") {
-		g_Scheduler.SetTimeout("openMenuEditQueue", 0.0f, EHandle(plr), 0);
+		g_Scheduler.SetTimeout("openMenuEditQueue", 0.0f, EHandle(plr), -1);
 	}
 }
 
@@ -520,7 +517,7 @@ void openMenuRadio(EHandle h_plr) {
 	g_menus[eidx].AddItem("\\wChange channel\\y", any("channels"));
 	
 	if (!chan.autoDj) {
-		g_menus[eidx].AddItem("\\w" + (canDj ? "Queue" : "Request") + " song" + "\\y", any("add-song"));
+		//g_menus[eidx].AddItem("\\w" + (canDj ? "Queue" : "Request") + " song" + "\\y", any("add-song"));
 		g_menus[eidx].AddItem("\\w" + (canDj ? "Edit" : "View") + " queue  " + chan.getQueueCountString() + "\\y", any("edit-queue"));
 		g_menus[eidx].AddItem("\\wSkip song\\y", any("skip-song"));
 		g_menus[eidx].AddItem("\\w" + (isDj ? "Quit DJ" : "Become DJ") + "\\y", any("become-dj"));
@@ -561,15 +558,13 @@ void openMenuChannelSelect(EHandle h_plr) {
 			label += "\\d  (" + listeners.size() + " listening)";
 		}
 		
-		Song@ song = chan.queue.size() > 0 ? chan.queue[0] : null;
-		
 		string djName = dj !is null ? string(dj.pev.netname) : "\\d(none)";
 		if (chan.autoDj) {
 			djName = AUTO_DJ_NAME + " \\d(BOT)";
 		}
 		
 		label += "\n\\y      Current DJ:\\w " + (djName);
-		label += "\n\\y      Now Playing:\\w " + (song !is null ? song.getName() : "\\d(nothing)");
+		label += "\n\\y      Now Playing:\\w " + chan.getCurrentSongString();
 		
 		label += "\n\\y";
 		
@@ -594,25 +589,25 @@ void openMenuEditQueue(EHandle h_plr, int selectedSlot) {
 	
 	@g_menus[eidx] = CTextMenu(@callbackMenuEditQueue);
 	
-	if (selectedSlot == 0) {
+	if (selectedSlot == -1) {
 		g_menus[eidx].SetTitle("\\y" + chan.name + " - " + title);
 		g_menus[eidx].AddItem("\\w..\\y", any("main-menu"));
 		
-		for (uint i = 1; i < chan.queue.size(); i++) {
+		for (uint i = 0; i < chan.queue.size(); i++) {
 			string label = "\\w" + chan.queue[i].getClippedName(48) + "\\y";
 			
 			// try to keep the menu spacing the same in both edit modes
 			if (i == chan.queue.size()-1) {
-				if (chan.queue.size() <= 3) {
+				if (chan.queue.size() <= 2) {
 					label += "\n\n\n\n";
 				}
 				else {
 					label += "\n\n\n\n";
 					
-					if (chan.queue.size() > 1) {
+					if (chan.queue.size() > 0) {
 						label += "\n\n\n";
 					}
-					if (chan.queue.size() > 5) {
+					if (chan.queue.size() > 4) {
 						label += "\n\n";
 					}
 				}
@@ -623,7 +618,7 @@ void openMenuEditQueue(EHandle h_plr, int selectedSlot) {
 	} else {
 		string label = "\\y" + chan.name + " - " + title + "\n";
 		
-		for (uint i = 1; i < chan.queue.size(); i++) {
+		for (uint i = 0; i < chan.queue.size(); i++) {
 			string color = int(i) == selectedSlot ? "\\r" : "\\w";
 			string name = int(i) == selectedSlot ? chan.queue[i].getClippedName(120) : chan.queue[i].getClippedName(32);
 			label += "\n" + color + "    " + name + "\\y";
@@ -767,8 +762,7 @@ void openMenuInviteRequest(EHandle h_plr, string asker, int channel) {
 	string label = "\\wDecline\\y";
 	label += "\n\nCurrent song:\n";
 	
-	Song@ song = chan.getSong();
-	label += song !is null ? "\\w" + song.getName() : "\\d(nothing)";
+	label += chan.getCurrentSongString();
 	
 	g_menus[eidx].AddItem(label + "\\y", any("exit"));
 	
