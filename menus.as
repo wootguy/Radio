@@ -104,6 +104,7 @@ void callbackMenuRadio(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const 
 		}
 		else {
 			chan.currentDj = getPlayerUniqueId(plr);
+			state.requestsAllowed = true;
 			chan.announce("" + plr.pev.netname + " is now the DJ!");
 		}
 		state.lastDjToggle = g_Engine.time;
@@ -172,52 +173,37 @@ void callbackMenuSong(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const C
 	string option = "";
 	item.m_pUserData.retrieve(option);
 	
-	if (option.Find("search:") == 0) {
-		string path = option.Length() > 7 ? option.SubString(7) : "";
-		g_Scheduler.SetTimeout("openMenuSong", 0.0f, EHandle(plr), path, 0, "");
-	}
-	else if (option.Find("search-up:") == 0) {
+	if (option.Find("play-request") == 0) {
 		array<string> parts = option.Split(":");
-		string childPath = parts[1];
-		string path = parts[2];
+		int channelId = atoi(parts[1]);
+		g_channels[channelId].songRequest.requester = plr.pev.netname;
+		g_channels[channelId].playSong(g_channels[channelId].songRequest);
+		g_channels[channelId].songRequest.id = 0;
 		
-		g_Scheduler.SetTimeout("openMenuSong", 0.0f, EHandle(plr), path, 0, childPath);
-	}
-	else if (option.Find("play:") == 0 or option.Find("playSearch:") == 0) {
+		g_channels[channelId].lastSongRequest = 0;
+		
+	} else if (option.Find("queue-request") == 0) {
 		array<string> parts = option.Split(":");
-		int page = atoi(parts[1]);
-		string path = parts[2];
-		string parentPath = getParentFolder(path);
+		int channelId = atoi(parts[1]);
+		g_channels[channelId].songRequest.requester = plr.pev.netname;
+		g_channels[channelId].queueSong(plr, g_channels[channelId].songRequest);
+		g_channels[channelId].songRequest.id = 0;
 		
-		Song@ song = getNodeFromPath(path).file;
+		g_channels[channelId].lastSongRequest = 0;
 		
-		if (!canDj)  {
-			if (int(chan.queue.size()) >= g_maxQueue.GetInt()) {
-				g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] Can't request now. The queue is full.\n");
-			}
-			else if (!state.shouldRequestCooldown(plr)) {
-				state.lastRequest = g_Engine.time;
-				string helpPath = parentPath;
-				if (helpPath.Length() > 0) {
-					helpPath += "/";
-				}
-				chan.announce("" + plr.pev.netname + " requested: " + helpPath + song.getName());
-				openMenuSongRequest(EHandle(chan.getDj()), plr.pev.netname, helpPath + song.getName(), path);
-			}
-		}
-		else {			
-			chan.queueSong(plr, song);
-		}
+	} else if (option.Find("deny-request") == 0) {
+		array<string> parts = option.Split(":");
+		int channelId = atoi(parts[1]);
 		
-		if (parts[0] == "playSearch") {
-			g_Scheduler.SetTimeout("openMenuSearch", 0.0f, EHandle(plr), parts[3], page);
-		}
-		else if (page != -1) { // -1 = song was added by request - not by browsing
-			g_Scheduler.SetTimeout("openMenuSong", 0.0f, EHandle(plr), parentPath, page, "");
-		}
-	}
-	else if (option == "main-menu") {		
-		g_Scheduler.SetTimeout("openMenuRadio", 0.0f, EHandle(plr));
+		g_channels[channelId].songRequest.id = 0;
+		g_channels[channelId].lastSongRequest = 0;
+		g_channels[channelId].announce("" + plr.pev.netname + " denied the request.", HUD_PRINTNOTIFY);
+	} else if (option.Find("block-request") == 0) {
+		array<string> parts = option.Split(":");
+		int channelId = atoi(parts[1]);
+		
+		state.requestsAllowed = false;
+		g_channels[channelId].announce("" + plr.pev.netname + " is no longer taking requests.");
 	}
 }
 
@@ -854,7 +840,7 @@ void openMenuInviteRequest(EHandle h_plr, string asker, int channel) {
 	g_menus[eidx].Open(0, 0, plr);
 }
 
-void openMenuSongRequest(EHandle h_plr, string asker, string songName, string songPath) {
+void openMenuSongRequest(EHandle h_plr, string asker, string songName, int channelId) {
 	CBasePlayer@ plr = cast<CBasePlayer@>(h_plr.GetEntity());
 	if (plr is null) {
 		return;
@@ -865,11 +851,13 @@ void openMenuSongRequest(EHandle h_plr, string asker, string songName, string so
 	@g_menus[eidx] = CTextMenu(@callbackMenuSong);
 	g_menus[eidx].SetTitle("\\ySong request:\n" + songName + "\n-" + asker + "\n");
 	
-	g_menus[eidx].AddItem("\\wQueue song\\y", any("play:-1:" + songPath));	
-	g_menus[eidx].AddItem("\\wIgnore\\y", any("exit"));
+	g_menus[eidx].AddItem("\\wPlay now\\y", any("play-request:" + channelId));
+	g_menus[eidx].AddItem("\\wAdd to queue\\y", any("queue-request:" + channelId));
+	g_menus[eidx].AddItem("\\wDeny request\\y", any("deny-request:" + channelId));
+	g_menus[eidx].AddItem("\\wDisable requests\\y", any("block-request:" + channelId));
 	
 	g_menus[eidx].Register();
-	g_menus[eidx].Open(0, 0, plr);
+	g_menus[eidx].Open(SONG_REQUEST_TIMEOUT, 0, plr);
 }
 
 void openMenuInvite(EHandle h_plr) {
