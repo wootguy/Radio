@@ -109,6 +109,10 @@ class Channel {
 		string msg = name + djName + " (" + getChannelListeners().size() + " listening)";
 		string songStr = "";
 		
+		if (state.muteMode == MUTE_VIDEOS) {
+			msg += " **MUTED**";
+		}
+		
 		uint maxLines = 3;
 		
 		for (uint i = 0; i < activeSongs.size() and i < maxLines; i++) {
@@ -167,7 +171,7 @@ class Channel {
 					song.loadState = SONG_LOADED;
 					song.startTime = DateTime();
 					RelaySay(name + "|" + song.getName() + "|" + (getDj() !is null ? string(getDj().pev.netname) : "(none)"));
-					advertise("Now playing " + song.getName());
+					advertise("Now playing: " + song.getName());
 					
 					
 					int packetDiff = packetId - packetListeners[i].packetId;
@@ -296,6 +300,8 @@ class Channel {
 			currentDj = "";
 			announce("" + plr.pev.netname + " is not the DJ anymore.", HUD_PRINTTALK, plr);
 		}
+		
+		updateSleepState();
 	}
 	
 	void playSong(Song song) {

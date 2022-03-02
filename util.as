@@ -68,16 +68,30 @@ PlayerState@ getPlayerState(CBasePlayer@ plr) {
 	return cast<PlayerState@>( g_player_states[steamId] );
 }
 
-int getEmptyPlayerSlotIdx() {
+// pick an entity to emit voice data from (must be a player slot or else it doesn't always work)
+void updateVoiceSlotIdx() {
+	int found = 0;
 	for ( int i = 1; i <= g_Engine.maxClients; i++ ) {
 		CBasePlayer@ p = g_PlayerFuncs.FindPlayerByIndex(i);
 		
 		if (p is null or !p.IsConnected()) {
-			return i-1;
+			if (found == 0) {
+				g_radio_ent_idx = i+1;
+				found++;
+			} else {
+				g_voice_ent_idx = i+1;
+				found++;
+				return;
+			}
 		}
 	}
 	
-	return 0;
+	if (found == 0) {
+		g_radio_ent_idx = 0;
+		g_voice_ent_idx = 1;
+	} else {
+		g_voice_ent_idx = 0;
+	}
 }
 
 void server_print(CBasePlayer@ plr, string msg) {

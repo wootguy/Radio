@@ -14,7 +14,7 @@ struct OpusFrame {
 // must call crc32_init() before using this class
 class SteamVoiceEncoder {
 public:
-	SteamVoiceEncoder(int frameSize, int framesPerPacket, int sampleRate, int bitrate);
+	SteamVoiceEncoder(int frameSize, int framesPerPacket, int sampleRate, int bitrate, uint64_t steamid, int encodeMode);
 
 	~SteamVoiceEncoder();
 
@@ -27,10 +27,13 @@ public:
 
 	void finishTestFile();
 
+	void updateEncoderSettings(int bitrate);
+
 private:
 	// samples must have frameSize length
 	bool encode_opus_frame(int16_t* samples, OpusFrame& outFrame);
 
+	uint64_t steamid;
 	int frameSize;
 	int framesPerPacket;
 	int sampleRate;

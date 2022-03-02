@@ -7,16 +7,18 @@
 
 using namespace std;
 
-SteamVoiceEncoder::SteamVoiceEncoder(int frameSize, int framesPerPacket, int sampleRate, int bitrate)
+SteamVoiceEncoder::SteamVoiceEncoder(int frameSize, int framesPerPacket, int sampleRate, int bitrate,
+	uint64_t steamid, int encodeMode)
 {
 	this->frameSize = frameSize;
 	this->framesPerPacket = framesPerPacket;
 	this->sampleRate = sampleRate;
 	this->bitrate = bitrate;
+	this->steamid = steamid;
 	sequence = 0;
 
 	int err = 0;
-	encoder = opus_encoder_create(sampleRate, 1, OPUS_APPLICATION_RESTRICTED_LOWDELAY, &err);
+	encoder = opus_encoder_create(sampleRate, 1, encodeMode, &err);
 	opus_encoder_ctl(encoder, OPUS_SET_BITRATE(bitrate));
 
 	if (err != OPUS_OK) {
@@ -63,15 +65,17 @@ string SteamVoiceEncoder::write_steam_voice_packet(int16_t* samples, int sampleL
 		}
 	}
 
+
 	vector<uint8_t> packet;
-	packet.push_back(67);
-	packet.push_back(151);
-	packet.push_back(144);
-	packet.push_back(18);
-	packet.push_back(1);
-	packet.push_back(0);
-	packet.push_back(16);
-	packet.push_back(1);
+	packet.push_back((uint64_t)(steamid >> 0) & 0xff);
+	packet.push_back((uint64_t)(steamid >> 8) & 0xff);
+	packet.push_back((uint64_t)(steamid >> 16) & 0xff);
+	packet.push_back((uint64_t)(steamid >> 24) & 0xff);
+	packet.push_back((uint64_t)(steamid >> 32) & 0xff);
+	packet.push_back((uint64_t)(steamid >> 40) & 0xff);
+	packet.push_back((uint64_t)(steamid >> 48) & 0xff);
+	packet.push_back((uint64_t)(steamid >> 56) & 0xff);
+
 	packet.push_back(11);
 	packet.push_back(sampleRate & 0xff);
 	packet.push_back(sampleRate >> 8);
@@ -142,4 +146,10 @@ void SteamVoiceEncoder::finishTestFile()
 {
 	outFile << "};\n";
 	outFile.close();
+}
+
+void SteamVoiceEncoder::updateEncoderSettings(int bitrate)
+{
+	this->bitrate = bitrate;
+	opus_encoder_ctl(encoder, OPUS_SET_BITRATE(bitrate));
 }

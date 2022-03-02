@@ -3,10 +3,8 @@ from threading import Thread
 
 # "client" that generates the voice data
 #hostname = '47.157.183.178' # twlz
-#hostname = '192.168.254.158' # woop pc
-#hostname = '192.168.254.106' # Windows VM
-#hostname = '192.168.254.110' # Linux VM
-hostname = '107.191.105.136' # VPS
+hostname = '192.168.254.158' # woop pc
+#hostname = '107.191.105.136' # VPS
 hostport = 1337
 client_address = (hostname, hostport)
 
