@@ -2,9 +2,10 @@
 #include "Channel"
 #include "menus"
 #include "util"
-#include "target_cdaudio_radio"
-#include "ambient_music_radio"
+//#include "target_cdaudio_radio"
+//#include "ambient_music_radio"
 #include "FakeMic"
+#include "TextToSpeech"
 
 // TODO:
 // - kick inactive DJs (no song for long time)
@@ -16,7 +17,6 @@
 // - read volume level from ambient_music when scripts are able to read it from the bsp
 // - set voice ent to DJ or requester if server is full, instead of player 0
 // - option to block requests from specific player
-// - tts?
 
 const string SONG_FILE_PATH = "scripts/plugins/Radio/songs.txt";
 const string MUSIC_PACK_PATH = "scripts/plugins/Radio/music_packs.txt";
@@ -40,6 +40,8 @@ array<Channel> g_channels;
 
 array<int> g_player_lag_status;
 uint g_song_id = 1;
+bool g_any_radio_listeners = false;
+
 
 // Menus need to be defined globally when the plugin is loaded or else paging doesn't work.
 // Each player needs their own menu or else paging breaks when someone else opens the menu.
@@ -53,6 +55,12 @@ array<CTextMenu@> g_menus = {
 };
 
 
+enum MUTE_MODE {
+	MUTE_NONE,
+	MUTE_TTS,
+	MUTE_VIDEOS,
+	MUTE_MODES
+}
 
 class PlayerState {
 	int channel = -1;
@@ -70,6 +78,7 @@ class PlayerState {
 	bool startedReliablePackets = false;
 	float reliablePacketsStart = 0; // delay before sending reliable packets on map start (prevent desyncs)
 	
+	int muteMode = MUTE_NONE;
 	
 	// text-to-speech settings
 	string lang = "en";
@@ -220,13 +229,14 @@ void PluginInit() {
 	
 	g_Scheduler.SetInterval("radioThink", 0.5f, -1);
 	
-	g_voice_ent_idx = getEmptyPlayerSlotIdx();
+	updateVoiceSlotIdx();
 	load_samples();
 	play_samples(false);
 	
 	g_player_lag_status.resize(33);
 	
 	send_voice_server_message("Radio\\en\\100\\.mstop");
+	send_voice_server_message("Radio\\en\\100\\.pause_packets");
 }
 
 void MapInit() {
@@ -248,11 +258,14 @@ void MapInit() {
 	}
 }
 
+// for quick plugin reloading (comment out music #include first)
+namespace AmbientMusicRadio { void toggleMapMusic(CBasePlayer@ plr, bool toggleOn) {} } 
+
 int g_replaced_cdaudio = 0;
 int g_replaced_music = 0;
 void MapActivate() {
-	g_CustomEntityFuncs.RegisterCustomEntity( "target_cdaudio_radio", "target_cdaudio_radio" );
-	g_CustomEntityFuncs.RegisterCustomEntity( "AmbientMusicRadio::ambient_music_radio", "ambient_music_radio" );
+	//g_CustomEntityFuncs.RegisterCustomEntity( "target_cdaudio_radio", "target_cdaudio_radio" );
+	//g_CustomEntityFuncs.RegisterCustomEntity( "AmbientMusicRadio::ambient_music_radio", "ambient_music_radio" );
 	
 	g_replaced_cdaudio = 0;
 	g_replaced_music = 0;
@@ -311,7 +324,7 @@ HookReturnCode ClientJoin(CBasePlayer@ plr) {
 	string id = getPlayerUniqueId(plr);
 	state.playAfterFullyLoaded = true;
 	
-	g_voice_ent_idx = getEmptyPlayerSlotIdx();
+	updateVoiceSlotIdx();
 	
 	return HOOK_CONTINUE;
 }
@@ -387,10 +400,40 @@ void loadCrossPluginLoadState() {
 	}
 }
 
+void updateSleepState() {
+	bool old_listeners = g_any_radio_listeners;
+	g_any_radio_listeners = false;
+	for ( int i = 1; i <= g_Engine.maxClients; i++ )
+	{
+		CBasePlayer@ p = g_PlayerFuncs.FindPlayerByIndex(i);
+		
+		if (p is null or !p.IsConnected()) {
+			continue;
+		}
+		
+		PlayerState@ state = getPlayerState(p);
+		
+		// advertise to players in who are not listening to anything, or if their channel has nothing playing
+		if (state.channel != -1) {
+			g_any_radio_listeners = true;
+			break;
+		}
+	}
+	
+	println("UHH " + g_any_radio_listeners + " " + old_listeners);
+	
+	if (g_any_radio_listeners != old_listeners) {
+		send_voice_server_message("Radio\\en\\100\\" + (g_any_radio_listeners ? ".resume_packets" : ".pause_packets"));
+	}
+}
+
 void showConsoleHelp(CBasePlayer@ plr, bool showChatMessage) {
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '------------------------------ Radio Help ------------------------------\n\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Type ".radio" to open the radio menu.\n');
-	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Type ".radio list" to show who\'s listening.\n\n');
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Type ".radio list" to show who\'s listening.\n');
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Type ".radio lang x" to set your text-to-speech language.\n');
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Type ".radio langs" to list valid text-to-speech languages.\n');
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Type ".radio pitch <10-200>" to set your text-to-speech pitch.\n\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'To queue a video, paste a youtube link in the chat. Use the "say" command in console to do this. Example:\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    say https://www.youtube.com/watch?v=b8HO6hba9ZE\n\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'To bypass the queue, add a "!" before your link. Example:\n');
@@ -444,6 +487,15 @@ bool doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 			
 			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] HUD " + (state.showHud ? "enabled" : "disabled") + ".\n");
 		}
+		else if (args.ArgC() > 2 and args[1] == "encoder") {
+			if (!isAdmin) {
+				g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] Admins only.\n");
+				return true;
+			}
+			int newRate = atoi(args[2]);
+			string encoderCmd = "settings " + newRate;
+			send_voice_server_message("Radio\\en\\100\\.encoder " + encoderCmd);
+		}
 		else if (args.ArgC() > 1 and args[1] == "reliable") {
 			state.reliablePackets = !state.reliablePackets;
 			
@@ -471,7 +523,17 @@ bool doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 						spos = " " + spos;
 					}
 					
-					g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "\n" + spos + ") " + listeners[k].pev.netname);
+					PlayerState@ lstate = getPlayerState(listeners[k]);
+					string mute = "";
+					if (lstate.muteMode == MUTE_TTS) {
+						mute += " (Mute: speech)";
+					} else if (lstate.muteMode == MUTE_VIDEOS) {
+						mute += " (Mute: videos)";
+					}
+					
+					string tts = " (TTS: " + lstate.lang + " " + lstate.pitch + ")";
+					
+					g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "\n" + spos + ") " + listeners[k].pev.netname + tts + mute);
 				}
 				
 				if (listeners.size() == 0) {
@@ -484,7 +546,49 @@ bool doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 		else if (args.ArgC() > 1 and args[1] == "help") {
 			showConsoleHelp(plr, !inConsole);
 		}
-		else if (args.ArgC() > 1 and args[1] == "debug") {		
+		else if (args.ArgC() > 1 and args[1] == "lang") {
+			string code = args[2].ToLowercase();
+			
+			if (g_langs.exists(code)) {
+				state.lang = code;
+				g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] TTS language set to " + string(g_langs[code]) + ".\n");
+			} else {
+				g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[MicBot] Invalid language code \"" + code + "\". Type \".radio langs\" for a list of valid codes.\n");
+			}
+			
+			return true; // hide from chat relay
+		}
+		else if (args.ArgC() > 1 and args[1] == "langs") {
+			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] TTS language codes sent to your console.\n");
+			
+			array<string>@ langKeys = g_langs.getKeys();
+			array<string> lines;
+			
+			langKeys.sort(function(a,b) { return string(g_langs[a]) < string(g_langs[b]); });
+			
+			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "Valid language codes:\n");
+			for (uint i = 0; i < g_langs.size(); i++) {
+				g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "    " + langKeys[i] + " = " + string(g_langs[langKeys[i]]) + "\n");
+			}
+			
+			return true; // hide from chat relay
+		}
+		else if (args.ArgC() > 1 and args[1] == "pitch") {
+			int pitch = atoi(args[2]);
+			
+			if (pitch < 10) {
+				pitch = 10;
+			} else if (pitch > 200) {
+				pitch = 200;
+			}
+			
+			state.pitch = pitch;
+			
+			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] TTS pitch set to " + pitch + ".\n");
+			
+			return true; // hide from chat relay
+		}
+		else if (args.ArgC() > 1 and args[1] == "debug") {
 			state.isDebugging = !state.isDebugging;
 			
 			if (state.isDebugging) {
@@ -537,6 +641,14 @@ bool doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 				}
 			}
 			
+			return true;
+		}
+	} else {
+		if (g_any_radio_listeners) {
+			send_voice_server_message("" + plr.pev.netname + "\\" + state.lang + "\\" + state.pitch + "\\" + args.GetCommandString());
+		}
+		if (args[0].Length() > 0 and args[0][0] == '~') {
+			g_PlayerFuncs.ClientPrintAll(HUD_PRINTCONSOLE, "[Radio][TTS] " + plr.pev.netname + ": " + args.GetCommandString() + "\n");
 			return true;
 		}
 	}

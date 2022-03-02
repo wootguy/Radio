@@ -25,14 +25,13 @@ cached_video_urls = {} # maps a youtube link ton audio link that VLC can stream
 #command_queue.put('w00tguy\\en\\80\\https://youtu.be/-zEJEdbZUP8')
 #command_queue.put('w00tguy\\en\\80\\~testaroni')
 
-#hostname = '192.168.254.158' # woop pc
-#hostname = '192.168.254.106' # Windows VM
-#hostname = '192.168.254.110' # Linux VM
-hostname = '107.191.105.136' # VPS
+hostname = '192.168.254.158' # woop pc
+#hostname = '107.191.105.136' # VPS
 hostport = 1337
 our_addr = (hostname, hostport)
 
 reconnect_tcp = False
+g_pause_packets = False
 
 server_timeout = 5 # time in seconds to wait for server heartbeat before disconnecting
 resend_packets = 0 # send packets X extra times to help prevent lost packets while keeping latency down
@@ -176,7 +175,7 @@ def get_youtube_info(url, channel, songId):
 			#print("BEST URL: " + playurl)
 			
 		send_queue.put("info:%s:%s:%s:%s" % (channel, songId, length, title))
-	except:
+	except Exception as e:
 		print(e)
 		send_queue.put("~Failed load video info for: " + url)
 
@@ -300,8 +299,8 @@ def play_tts(speaker, text, id, lang, pitch, is_hidden):
 	 
 	print("Played %d" % id)
 	
-	if is_hidden:
-		send_queue.put("~" + text)
+	#if is_hidden:
+	#	send_queue.put("~[TTS] " + text)
 
 def command_loop():
 	global our_addr
@@ -367,6 +366,7 @@ def transmit_voice():
 	global steam_voice
 	global send_queue
 	global g_media_players
+	global g_pause_packets
 	
 	udp_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
 	udp_socket.bind(our_addr)
@@ -395,6 +395,9 @@ def transmit_voice():
 					send_queue.put("play:%s:%s:%s:%s:%s:%s" % (player['channelId'], player['songId'], packetId, player['offset'], player['length'], player['title']))
 					player['start_time'] = time.time()
 					break
+			continue
+
+		if g_pause_packets:
 			continue
 
 		packet = packetId.to_bytes(2, 'big')
@@ -571,6 +574,19 @@ while True:
 		t.daemon = True
 		t.start()
 		
+		continue
+		
+	if line.startswith('.encoder'):
+		message = line[len('.encoder')+1:]
+		steam_voice.stdin.write(message + "\n")
+		continue
+		
+	if line.startswith('.pause_packets'):
+		g_pause_packets = True
+		continue
+		
+	if line.startswith('.resume_packets'):
+		g_pause_packets = False
 		continue
 	
 	if line.startswith('.stopid'):

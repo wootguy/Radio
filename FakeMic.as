@@ -9,6 +9,7 @@ const string VOICE_FILE = "scripts/plugins/store/_fromvoice.txt";
 uint last_file_size = 0;
 uint ideal_buffer_size = 8; // amount of packets to delay playback of. Higher = more latency + bad connection tolerance
 float sample_load_start = 0;
+int g_radio_ent_idx = 0;
 int g_voice_ent_idx = 0;
 float file_check_interval = 0.02f;
 
@@ -17,6 +18,8 @@ float g_ideal_next_packet_time = 0;
 int g_packet_idx = 0;
 uint16 expectedNextPacketId = 0;
 float g_packet_delay = 0.05f;
+
+array<VoicePacket> g_voice_data_stream;
 
 string voice_server_file = "scripts/plugins/store/_tovoice.txt";
 const float BUFFER_DELAY = 0.7f; // minimum time for a voice packet to reach players (seems to actually be 4x longer...)
@@ -43,6 +46,11 @@ array<uint8> char_to_nibble = {
 };
 
 void load_samples() {
+	if (!g_any_radio_listeners) {
+		g_Scheduler.SetTimeout("load_samples", 1.0f);
+		return;
+	}
+
 	File@ file = g_FileSystem.OpenFile(VOICE_FILE, OpenFile::READ);	
 
 	if (file !is null && file.IsOpen()) {
@@ -235,8 +243,8 @@ void load_packets_from_file(File@ file, bool fastSend) {
 						  
 		array<string> parts = line.Split(":"); // packet_id : channel_1_packet : channel_2_packet : ...
 		
-		if (parts.size()-1 != g_channels.size()) {
-			println("Packet streams != channel count (" + (parts.size()-1) + " " + g_channels.size() + "): " + line);			
+		if (parts.size()-1 != g_channels.size()+1) {
+			println("Packet streams != channel count + 1 (" + (parts.size()-1) + " " + g_channels.size() + "): " + line);			
 			finish_sample_load(file);
 			return; // don't let packet buffer sizes get out of sync between channels
 		}
@@ -255,7 +263,12 @@ void load_packets_from_file(File@ file, bool fastSend) {
 				packet.data.insertLast((n1 << 4) + n2);
 			}
 			
-			g_channels[c-1].packetStream.insertLast(packet);
+			if (c-1 < g_channels.size()) {
+				g_channels[c-1].packetStream.insertLast(packet);
+			} else {
+				g_voice_data_stream.insertLast(packet);
+			}
+			
 
 			if (packetString.Length() % 2 == 1) {
 				println("ODD LENGTH");
@@ -294,26 +307,28 @@ void play_samples(bool buffering) {
 		return;
 	}
 	
-	int speaker = getEmptyPlayerSlotIdx();
-	
 	string channelPacketSizes = "";
+	int ttsChannelId = g_channels.size();
 	
-	for (int c = 0; c < int(g_channels.size()); c++) {		
-		VoicePacket packet = g_channels[c].packetStream[0];
-		g_channels[c].packetStream.removeAt(0);
-	
-		g_channels[c].triggerPacketEvents(packet.id);
-	
-		/*
-		if (packet.data.size() == 0) {
-			g_Scheduler.SetTimeout("play_samples", 0.0f, false);
-			return;
+	for (int c = 0; c < int(g_channels.size()) + 1; c++) {
+		VoicePacket packet;
+		int speakerEnt = g_radio_ent_idx;
+		
+		if (c < ttsChannelId) {
+			packet = g_channels[c].packetStream[0];
+			g_channels[c].packetStream.removeAt(0);
+			g_channels[c].triggerPacketEvents(packet.id);
+			speakerEnt = g_radio_ent_idx;
+		} else {
+			packet = g_voice_data_stream[0];
+			g_voice_data_stream.removeAt(0);
+			speakerEnt = g_voice_ent_idx;
 		}
-		*/
 		
 		channelPacketSizes += " " + formatInt(packet.data.size(), "", 3);
 		
 		bool silentPacket = packet.data.size() <= 4 and packet.data[0] == 0xff;
+		//println("IDX " + g_radio_ent_idx + " " + g_voice_ent_idx);
 		
 		if (!silentPacket) {
 			for ( int i = 1; i <= g_Engine.maxClients; i++ )
@@ -326,7 +341,14 @@ void play_samples(bool buffering) {
 				
 				PlayerState@ state = getPlayerState(plr);
 				
-				if (state.channel == c) {
+				if (state.muteMode == MUTE_VIDEOS and c != ttsChannelId) {
+					continue;
+				}
+				if (state.muteMode == MUTE_TTS and c == ttsChannelId) {
+					continue;
+				}
+				
+				if (c == state.channel || (c == ttsChannelId && state.channel != -1)) {
 					NetworkMessageDest sendMode = state.reliablePackets ? MSG_ONE : MSG_ONE_UNRELIABLE;
 					
 					if (state.reliablePackets) {
@@ -340,9 +362,8 @@ void play_samples(bool buffering) {
 						}
 					}
 					
-					
 					NetworkMessage m(sendMode, NetworkMessages::NetworkMessageType(53), plr.edict());
-						m.WriteByte(g_voice_ent_idx); // entity which is "speaking"
+						m.WriteByte(speakerEnt); // entity which is "speaking"
 						m.WriteShort(packet.data.size()); // compressed audio length
 						for (uint k = 0; k < packet.data.size(); k++) {
 							m.WriteByte(packet.data[k]);

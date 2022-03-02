@@ -31,7 +31,7 @@ int main(int argc, const char **argv)
 	int samplesPerPacket = frameSize * framesPerPacket;
 	int opusBitrate = 32000; // 32khz = steam default
 	float globalVolume = 1.0f; // global volume adjustment
-	const int packetStreams = 3; // individually mixed packet streams, for multiple voice players
+	const int packetStreams = 4; // individually mixed packet streams, for multiple voices
 
 	fprintf(stderr, "Sampling rate     : %d Hz\n", sampleRate);
 	fprintf(stderr, "Frame size        : %d samples\n", frameSize);
@@ -58,9 +58,22 @@ int main(int argc, const char **argv)
 		inputStreams.push_back(stream);
 	}
 
+	// Steam ids need to be different pe stream, if each stream is played at the same time.
+	// Otherwise the client will try to combine the streams weridly and neither will work.
+	uint64_t steamid64 = 0x4397901201001001; // forgot who
+	uint64_t steam_w00tguy = 0x1100001025464b4; // w00tguy123
+	uint64_t steam_w00tman = 0x110000112909743; // w00tman123
 	for (int i = 0; i < packetStreams; i++) {
 		mixBuffer[i] = new float[samplesPerPacket];
-		encoders[i] = new SteamVoiceEncoder(frameSize, framesPerPacket, sampleRate, opusBitrate);
+
+		uint64_t steamid = steam_w00tguy;
+		int encodeMode = OPUS_APPLICATION_AUDIO;
+		if (i == packetStreams - 1) {
+			steamid = steam_w00tman;
+			encodeMode = OPUS_APPLICATION_VOIP;
+		}
+
+		encoders[i] = new SteamVoiceEncoder(frameSize, framesPerPacket, sampleRate, opusBitrate, steamid, encodeMode);
 	}
 
 	vector<int16_t> allSamples;
@@ -168,6 +181,7 @@ int main(int argc, const char **argv)
 				float fspeed = atof(speed.c_str());
 
 				ThreadInputBuffer* mp3Input = new ThreadInputBuffer(PIPE_BUFFER_SIZE);
+				mp3Input->mixerChannel = packetStreams - 1; // last channel for tts
 				mp3Input->startMp3InputThread(fname, sampleRate, volume, fspeed);
 				inputStreams.push_back(mp3Input);
 				fprintf(stderr, "Play %s (%.2f x%.2f)\n", fname.c_str(), volume, fspeed);
@@ -217,6 +231,22 @@ int main(int argc, const char **argv)
 						inputStreams[i]->mixerChannel = channelId;
 					}
 				}
+			}
+
+			if (command.find("settings") == 0) {
+				vector<string> args = splitString(command, " ");
+				if (args.size() != 2) {
+					fprintf(stderr, "Wrong number of args in assign command: %s\n", command.c_str());
+					continue;
+				}
+				int bitrate = atoi(args[1].c_str());
+				opusBitrate = bitrate;
+
+				for (int i = 0; i < packetStreams; i++) {
+					encoders[i]->updateEncoderSettings(bitrate);
+				}
+
+				fprintf(stderr, "Bitrate set to %d\n", bitrate);
 			}
 		}
 	}

@@ -20,11 +20,11 @@ void callbackMenuRadio(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const 
 		g_Scheduler.SetTimeout("openMenuChannelSelect", 0.0f, EHandle(plr));
 	}
 	else if (option == "turn-off") {
-		if (state.channel >= 0) {
+		state.channel = -1;
+		
+		if (chan !is null) {
 			chan.handlePlayerLeave(plr, -1);
 		}
-		
-		state.channel = -1;
 		
 		string msg = "[Radio] Turned off.";
 		if (state.neverUsedBefore) {
@@ -46,6 +46,11 @@ void callbackMenuRadio(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const 
 		AmbientMusicRadio::toggleMapMusic(plr, true);
 	}
 	else if (option == "main-menu") {		
+		g_Scheduler.SetTimeout("openMenuRadio", 0.0f, EHandle(plr));
+	}
+	else if (option == "toggle-mute") {
+		state.muteMode = (state.muteMode + 1) % MUTE_MODES;
+		clientCommand(plr, "stopsound"); // switching too fast can cause stuttering
 		g_Scheduler.SetTimeout("openMenuRadio", 0.0f, EHandle(plr));
 	}
 	else if (option == "stop-menu") {
@@ -162,6 +167,7 @@ void callbackMenuChannelSelect(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber
 		AmbientMusicRadio::toggleMapMusic(plr, !musicIsPlaying);
 		
 		g_channels[state.channel].announce("" + plr.pev.netname + " tuned in.", HUD_PRINTNOTIFY, plr);
+		updateSleepState();
 	}
 }
 
@@ -443,13 +449,23 @@ void openMenuRadio(EHandle h_plr) {
 	bool isDjReserved = chan.isDjReserved();
 	bool canDj = chan.canDj(plr);
 	bool isDj = dj !is null and dj.entindex() == plr.entindex();
+	
+	string muted = "\\d(off)";
+	if (state.muteMode == MUTE_TTS) {
+		muted = "speech";
+	} else if (state.muteMode == MUTE_VIDEOS) {
+		muted = "videos";
+	}
+	
+	
 
 	g_menus[eidx].AddItem("\\wHelp\\y", any("help"));
 	g_menus[eidx].AddItem("\\wTurn off\\y", any("turn-off"));
 	g_menus[eidx].AddItem("\\wChange channel\\y", any("channels"));
 	g_menus[eidx].AddItem("\\w" + (canDj ? "Edit" : "View") + " queue  " + chan.getQueueCountString() + "\\y", any("edit-queue"));
 	g_menus[eidx].AddItem("\\wStop video(s)\\y", any("stop-menu"));
-	g_menus[eidx].AddItem("\\wToggle HUD\\y", any("hud"));
+	g_menus[eidx].AddItem("\\wHUD: " + (state.showHud ? "on" : "off") + "\\y", any("hud"));
+	g_menus[eidx].AddItem("\\wMute: " + muted + "\\y", any("toggle-mute"));
 	g_menus[eidx].AddItem((chan.spamMode ? "\\r" : "\\w") + (isDj ? "Quit DJ" : "Become DJ") + "\\y", any("become-dj"));
 	g_menus[eidx].AddItem("\\wInvite\\y", any("invite"));
 	
