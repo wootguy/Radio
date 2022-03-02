@@ -9,10 +9,10 @@ string formatTime(int totalSeconds) {
 	if (hours > 0) {
 		string minStr = minutes >= 10 ? ("" + minutes) : ("0" + minutes);
 		string secStr = seconds >= 10 ? ("" + seconds) : ("0" + seconds);
-		return "(" + hours + ":" + minStr + ":" + secStr + ")";
+		return "" + hours + ":" + minStr + ":" + secStr + "";
 	} else {
 		string secStr = seconds >= 10 ? ("" + seconds) : ("0" + seconds);
-		return "(" + minutes + ":" + secStr + ")";
+		return "" + minutes + ":" + secStr + "";
 	}
 	
 }

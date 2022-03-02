@@ -15,6 +15,7 @@ float file_check_interval = 0.02f;
 float g_playback_start_time = 0;
 float g_ideal_next_packet_time = 0;
 int g_packet_idx = 0;
+uint16 expectedNextPacketId = 0;
 float g_packet_delay = 0.05f;
 
 string voice_server_file = "scripts/plugins/store/_tovoice.txt";
@@ -217,6 +218,20 @@ void load_packets_from_file(File@ file, bool fastSend) {
 	} else {
 		uint16 packetId = (char_to_nibble[ uint(line[0]) ] << 12) + (char_to_nibble[ uint(line[1]) ] << 8) +
 						  (char_to_nibble[ uint(line[2]) ] << 4) + (char_to_nibble[ uint(line[3]) ] << 0);
+		
+		if (packetId != expectedNextPacketId) {
+			//g_PlayerFuncs.ClientPrintAll(HUD_PRINTCONSOLE, "[Radio] Expected packet " + expectedNextPacketId + " but got " + packetId + "\n");
+			
+			for (int failsafe = 0; failsafe < 100 and expectedNextPacketId != packetId; failsafe++) {
+				
+				for (int c = 0; c < int(g_channels.size()); c++) {
+					g_channels[c].triggerPacketEvents(expectedNextPacketId);
+				}
+				
+				expectedNextPacketId += 1;
+			}
+		}
+		expectedNextPacketId = packetId + 1;
 						  
 		array<string> parts = line.Split(":"); // packet_id : channel_1_packet : channel_2_packet : ...
 		
@@ -312,7 +327,21 @@ void play_samples(bool buffering) {
 				PlayerState@ state = getPlayerState(plr);
 				
 				if (state.channel == c) {
-					NetworkMessage m(MSG_ONE_UNRELIABLE, NetworkMessages::NetworkMessageType(53), plr.edict());
+					NetworkMessageDest sendMode = state.reliablePackets ? MSG_ONE : MSG_ONE_UNRELIABLE;
+					
+					if (state.reliablePackets) {
+						sendMode = MSG_ONE;
+						
+						if (state.reliablePacketsStart > g_EngineFuncs.Time()) {
+							sendMode = MSG_ONE_UNRELIABLE;
+						} else if (!state.startedReliablePackets) {
+							state.startedReliablePackets = true;
+							g_PlayerFuncs.ClientPrint(plr, HUD_PRINTNOTIFY, "[Radio] Reliable packets started.");
+						}
+					}
+					
+					
+					NetworkMessage m(sendMode, NetworkMessages::NetworkMessageType(53), plr.edict());
 						m.WriteByte(g_voice_ent_idx); // entity which is "speaking"
 						m.WriteShort(packet.data.size()); // compressed audio length
 						for (uint k = 0; k < packet.data.size(); k++) {
