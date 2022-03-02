@@ -206,7 +206,7 @@ def receive_voice_data():
 		if time_since_last_packet > 3:
 			expectedPacketId = -1
 			if is_connected:
-				response_queue.put("Micbot is now offline.")
+				response_queue.put("Radio server is now offline.")
 			is_connected = False
 			all_packets = send_packets_to_plugin(udp_socket, all_packets, True)
 		
@@ -220,7 +220,7 @@ def receive_voice_data():
 		
 		last_packet_time = datetime.datetime.now()
 		if not is_connected:
-			response_queue.put("Micbot is now online. Say .mhelp for commands.")
+			response_queue.put("Radio server is online. Say .radio to use it.")
 		is_connected = True
 		
 		data = udp_packet[0]

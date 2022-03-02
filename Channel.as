@@ -30,6 +30,37 @@ class Channel {
 			if (activeSongs[i].isFinished()) {
 				activeSongs.removeAt(i);
 				i--;
+				continue;
+			}
+			
+			if (activeSongs[i].loadState == SONG_LOADING and g_EngineFuncs.Time() - activeSongs[i].loadTime > SONG_START_TIMEOUT) {
+				// voice server probably loaded it so stop it
+				send_voice_server_message("Radio\\en\\100\\.stopid " + activeSongs[i].id); 
+				
+				if (!activeSongs[i].noRestart) {
+					// attempt to restart song
+					Song restartSong;
+					restartSong.path = activeSongs[i].path;
+					restartSong.loadState = activeSongs[i].loadState;
+					restartSong.offset = activeSongs[i].offset;
+					restartSong.id = g_song_id;
+					restartSong.requester = activeSongs[i].requester;
+					restartSong.args = activeSongs[i].args;
+					restartSong.noRestart = true; // only try this once
+					g_song_id += 1;
+					
+					announce("Video seems to have never started. Attempting to restart it.");
+					
+					activeSongs.removeAt(i);
+					i--;
+					
+					playSong(restartSong);
+					
+					continue;
+				} else {
+					activeSongs[i].loadState = SONG_FAILED;
+					announce("Failed to detect video load even after restarting it.");
+				}
 			}
 		}
 		
@@ -85,7 +116,10 @@ class Channel {
 			if (i > 0) {
 				songStr += "\n";
 			}
-			string timeleft = song.loadState == SONG_LOADED ? formatTime(song.getTimeLeft()) : "(--:--)";
+			int timePassed = song.getTimePassed() + (song.offset/1000);
+			int songLength = (song.lengthMillis + 999) / 1000;
+			string timeStr = "(" + formatTime(timePassed) + " / " + formatTime(songLength) + ")";
+			string timeleft = song.loadState == SONG_LOADED ? timeStr : "(--:-- / --:--)";
 			songStr += song.getClippedName(96) + "  " + timeleft;
 		}
 		
@@ -132,6 +166,9 @@ class Channel {
 					println("packet " + packetId + " triggered start of song " + packetListeners[i].songId);
 					song.loadState = SONG_LOADED;
 					song.startTime = DateTime();
+					RelaySay(name + "|" + song.getName() + "|" + (getDj() !is null ? string(getDj().pev.netname) : "(none)"));
+					advertise("Now playing " + song.getName());
+					
 					
 					int packetDiff = packetId - packetListeners[i].packetId;
 					if (packetDiff > 0) {
@@ -230,6 +267,24 @@ class Channel {
 		}
 	}
 	
+	void advertise(string msg, HUD messageType=HUD_PRINTNOTIFY) {
+		for ( int i = 1; i <= g_Engine.maxClients; i++ )
+		{
+			CBasePlayer@ plr = g_PlayerFuncs.FindPlayerByIndex(i);
+			
+			if (plr is null or !plr.IsConnected()) {
+				continue;
+			}
+			
+			PlayerState@ state = getPlayerState(plr);
+			
+			// advertise to players in who are not listening to anything, or if their channel has nothing playing
+			if (state.channel == -1 or g_channels[state.channel].activeSongs.size() == 0) {
+				g_PlayerFuncs.ClientPrint(plr, messageType, "[Radio][" + name + "] " + msg + "\n");
+			}
+		}
+	}
+	
 	void handlePlayerLeave(CBasePlayer@ plr, int newChannel) {
 		if (newChannel >= 0) {
 			announce("" + plr.pev.netname + " switched to " + g_channels[newChannel].name + ".", HUD_PRINTNOTIFY, plr);
@@ -246,10 +301,9 @@ class Channel {
 	void playSong(Song song) {
 		song.isPlaying = true;
 		song.loadState = SONG_LOADING;
+		song.loadTime = g_EngineFuncs.Time();
 		activeSongs.insertLast(song);
 		send_voice_server_message("Radio\\en\\100\\" + song.path + " " + id + " " + song.id + " " + song.args);
-		
-		RelaySay(name + "|" + song.getName() + "|" + (getDj() !is null ? string(getDj().pev.netname) : "(none)"));
 		
 		array<CBasePlayer@> listeners = getChannelListeners();
 		for (uint i = 0; i < listeners.size(); i++) {

@@ -22,6 +22,7 @@ const string SONG_FILE_PATH = "scripts/plugins/Radio/songs.txt";
 const string MUSIC_PACK_PATH = "scripts/plugins/Radio/music_packs.txt";
 const int MAX_SERVER_ACTIVE_SONGS = 16;
 const int SONG_REQUEST_TIMEOUT = 20;
+const int SONG_START_TIMEOUT = 10; // max time to wait before cancelling a song that never started
 
 CCVar@ g_inviteCooldown;
 CCVar@ g_requestCooldown;
@@ -64,6 +65,11 @@ class PlayerState {
 	bool neverUsedBefore = true;
 	bool isDebugging = false;
 	bool requestsAllowed = true;
+	
+	bool reliablePackets = false; // send packets on the reliable stream to fight packet loss
+	bool startedReliablePackets = false;
+	float reliablePacketsStart = 0; // delay before sending reliable packets on map start (prevent desyncs)
+	
 	
 	// text-to-speech settings
 	string lang = "en";
@@ -135,7 +141,9 @@ class Song {
 	DateTime startTime;
 	bool isPlaying = false;
 	bool messageSent = false; // was chat message sent about this song being added
+	bool noRestart = false; // failsafe for infinite video restarting
 	string args; // playback args (time offset)
+	float loadTime; // time that song started waiting to start after loading
 	
 	string getClippedName(int length) {
 		string name = getName();
@@ -156,12 +164,16 @@ class Song {
 	}
 	
 	int getTimeLeft() {
+		int songLen = ((lengthMillis + 999) / 1000) - (offset/1000);
+		return songLen - getTimePassed();
+	}
+	
+	int getTimePassed() {
 		if (loadState != SONG_LOADED) {
 			startTime = DateTime();
 		}
 		int diff = int(TimeDifference(DateTime(), startTime).GetTimeDifference());
-		int songLen = ((lengthMillis + 999) / 1000) - (offset/1000);
-		return songLen - diff;
+		return diff;
 	}
 	
 	bool isFinished() {
@@ -227,6 +239,8 @@ void MapInit() {
 		state.lastRequest = -9999;
 		state.lastDjToggle = -9999;
 		state.lastSongSkip = -9999;
+		state.startedReliablePackets = false;
+		state.reliablePacketsStart = 999999;
 	}
 	
 	for (uint i = 0; i < g_channels.size(); i++) {
@@ -345,6 +359,7 @@ void radioThink() {
 		if (state.playAfterFullyLoaded and g_player_lag_status[plr.entindex()] == LAG_NONE) {
 			println("Toggline map music for fully loaded player: " + plr.pev.netname);
 			state.playAfterFullyLoaded = false;
+			state.reliablePacketsStart = g_EngineFuncs.Time() + 10;
 			AmbientMusicRadio::toggleMapMusic(plr, !state.isRadioListener());
 		}
 
@@ -385,7 +400,10 @@ void showConsoleHelp(CBasePlayer@ plr, bool showChatMessage) {
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Can\'t hear anything?\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    Check that you haven\'t disabled voice. "voice_enable" should be set to 1.\n\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Audio is stuttering?\n');
-	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    Try typing "stopsound" in console. Voice playback often breaks after viewing a map cutscene.\n\n');
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    Try typing "stopsound" in console. Voice playback often breaks after viewing a map cutscene.\n');
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    If that doesn\'t help, then check if you have any "loss" shown with "net_graph 4". If you do\n');
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    then use the ".radio reliable" command to send voice data on the reliable channel. This should\n');
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    fix the audio cutting out but may cause desyncs or "reliable channel overflow".\n\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Audio is too loud/quiet?\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    You can adjust voice volume with "voice_scale" in console. Type stopsound to apply your change.\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '\n------------------------------------------------------------------------\n');
@@ -425,6 +443,15 @@ bool doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 			}
 			
 			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] HUD " + (state.showHud ? "enabled" : "disabled") + ".\n");
+		}
+		else if (args.ArgC() > 1 and args[1] == "reliable") {
+			state.reliablePackets = !state.reliablePackets;
+			
+			if (args.ArgC() > 2) {
+				state.reliablePackets = atoi(args[2]) != 0;
+			}
+			
+			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] Reliable packets " + (state.reliablePackets ? "enabled" : "disabled") + ".\n");
 		}
 		else if (args.ArgC() > 1 and args[1] == "list") {
 			for (uint i = 0; i < g_channels.size(); i++) {
