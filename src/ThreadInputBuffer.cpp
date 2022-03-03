@@ -76,8 +76,8 @@ int ThreadInputBuffer::read(char* outputBuffer, size_t readSize)
 	writeBuffer = temp;
 	//fprintf(stderr, "Refilled read buffer\n");
 	status.setValue(isFlushing ? TIB_FLUSHED : TIB_WRITE);
-	if (isFlushing)
-		fprintf(stderr, "Flushed output\n");
+	//if (isFlushing)
+	//	fprintf(stderr, "Flushed output\n");
 
 	// read what's left of readSize
 	size_t readLeft = readSize - canRead;

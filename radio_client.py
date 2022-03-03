@@ -221,7 +221,7 @@ def playtube_async(url, offset, asker, channelId, songId):
 		#	playurl = "'" + playurl + "'"
 		
 		loudnorm_filter = '-af loudnorm=I=-22:LRA=11:TP=-1.5' # uses too much memory
-		cmd = 'ffmpeg -hide_banner -loglevel error -y -i %s -ss %s -f s16le -ar 12000 -ac 1 -' % (playurl, offset)
+		cmd = 'ffmpeg -hide_banner -loglevel error -y -ss %s -i %s -f s16le -ar 12000 -ac 1 -' % (offset, playurl)
 		#print(cmd)
 		pipefile = open(pipePath, 'w')
 		ffmpeg = subprocess.Popen(cmd.split(' '), stdout=pipefile)
@@ -291,7 +291,7 @@ def play_tts(speaker, text, id, lang, pitch, is_hidden):
 	steam_voice.stdin.write("play %s %.2f %.2f\n" % (fname, volume, pitch))
 	g_tts_players[speaker] = fname
 	 
-	print("Played %d" % id)
+	#print("Played %d" % id)
 	
 	#if is_hidden:
 	#	send_queue.put("~[TTS] " + text)
@@ -628,10 +628,7 @@ while True:
 		tts_id += 1
 		continue
 	
-	if tts_enabled:			
-		if not had_prefix:
-			continue
-		
+	if tts_enabled:		
 		t = Thread(target = play_tts, args =(name, line, tts_id, lang, pitch, had_prefix, ))
 		t.start()
 		tts_id += 1

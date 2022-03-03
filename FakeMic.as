@@ -45,24 +45,55 @@ array<uint8> char_to_nibble = {
 	0, 10, 11, 12, 13, 14, 15
 };
 
+// using postThink hook instead of g_Scheduler so that music keeps playing during game_end screen
+float g_next_load_samples = 0;
+float g_next_play_samples = 0;
+bool g_buffering_samples = false;
+bool g_fast_loading = false;
+bool g_finished_load = true;
+File@ g_packet_in_file = null;
+
+HookReturnCode PlayerPostThink(CBasePlayer@ plr) {
+	float time = g_EngineFuncs.Time();
+	
+	if (g_next_load_samples != -1 and time >= g_next_load_samples) {
+		g_next_load_samples = -1;
+		load_samples();
+	}
+	if (g_next_play_samples != -1 and time >= g_next_play_samples) {
+		g_next_play_samples = -1;
+		play_samples();
+	}
+	
+	return HOOK_CONTINUE;
+}
+
 void load_samples() {
+	if (!g_finished_load) {
+		load_packets_from_file();
+		return;
+	}
+	
 	if (!g_any_radio_listeners) {
-		g_Scheduler.SetTimeout("load_samples", 1.0f);
+		g_next_load_samples = g_EngineFuncs.Time() + 1.0f;
 		return;
 	}
 
-	File@ file = g_FileSystem.OpenFile(VOICE_FILE, OpenFile::READ);	
+	@g_packet_in_file = @g_FileSystem.OpenFile(VOICE_FILE, OpenFile::READ);	
 
-	if (file !is null && file.IsOpen()) {
-		if (file.GetSize() == last_file_size) {
-			g_Scheduler.SetTimeout("load_samples", file_check_interval);
+	if (g_packet_in_file !is null && g_packet_in_file.IsOpen()) {
+		if (g_packet_in_file.GetSize() == last_file_size) {
+			g_next_load_samples = g_EngineFuncs.Time() + file_check_interval;
 			return; // file hasn't been updated yet
 		}
 	
 		sample_load_start = g_EngineFuncs.Time();
-		last_file_size = file.GetSize();
-		load_packets_from_file(file, false);
+		last_file_size = g_packet_in_file.GetSize();
+		g_fast_loading = false;
+		g_finished_load = false;
+		load_packets_from_file();
 	} else {
+		println("[FakeMic] voice file not found: " + VOICE_FILE + "\n");
 		g_Log.PrintF("[FakeMic] voice file not found: " + VOICE_FILE + "\n");
 	}
 }
@@ -191,7 +222,7 @@ void handle_radio_message(string msg) {
 	send_notification("[Radio] " + msg + "\n", chatNotNotify);
 }
 
-void finish_sample_load(File@ file) {
+void finish_sample_load() {
 	float loadTime = (g_EngineFuncs.Time() - sample_load_start) + file_check_interval + g_Engine.frametime;
 	
 	if (loadTime > MAX_SAMPLE_LOAD_TIME) {
@@ -200,21 +231,23 @@ void finish_sample_load(File@ file) {
 	
 	//println("Loaded samples from file in " + loadTime + " seconds");
 	
-	file.Close();
+	g_packet_in_file.Close();
+	@g_packet_in_file = null;
+	g_finished_load = true;
 	load_samples();
 }
 
-void load_packets_from_file(File@ file, bool fastSend) {
-	if (file.EOFReached()) {
-		finish_sample_load(file);
+void load_packets_from_file() {
+	if (g_packet_in_file.EOFReached()) {
+		finish_sample_load();
 		return;
 	}
 	
 	string line;
-	file.ReadLine(line);
+	g_packet_in_file.ReadLine(line);
 	
 	if (line.IsEmpty()) {
-		finish_sample_load(file);
+		finish_sample_load();
 		return;
 	}
 	
@@ -245,7 +278,7 @@ void load_packets_from_file(File@ file, bool fastSend) {
 		
 		if (parts.size()-1 != g_channels.size()+1) {
 			println("Packet streams != channel count + 1 (" + (parts.size()-1) + " " + g_channels.size() + "): " + line);			
-			finish_sample_load(file);
+			finish_sample_load();
 			return; // don't let packet buffer sizes get out of sync between channels
 		}
 		
@@ -279,22 +312,23 @@ void load_packets_from_file(File@ file, bool fastSend) {
 	
 	float loadTime = (g_EngineFuncs.Time() - sample_load_start) + file_check_interval + g_Engine.frametime;
 	
-	if (g_Engine.frametime > 0.025f || loadTime > MAX_SAMPLE_LOAD_TIME*0.5f) {
+	if (g_Engine.frametime > 0.025f || loadTime > MAX_SAMPLE_LOAD_TIME*0.5f || g_fast_loading) {
 		// Send the rest of the packets now so the stream doesn't cut out.
-		load_packets_from_file(file, true);
+		g_fast_loading = true;
+		load_packets_from_file();
 	} else {
 		// Try not to impact frametimes too much.
 		// The game has an annoying stutter when packets are loaded all at once.
-		g_Scheduler.SetTimeout("load_packets_from_file", 0.0f, @file, false);
+		g_next_load_samples = g_EngineFuncs.Time() + 0.01f;
 	}
 }
 
-void play_samples(bool buffering) {
+void play_samples() {
 	// all channels receive/send packets at the same time so it doesn't matter which channel is checked
 	uint packetStreamSize = g_channels[0].packetStream.size();
 
-	if (packetStreamSize < 1 or (buffering and packetStreamSize < ideal_buffer_size)) {
-		if (!buffering) {
+	if (packetStreamSize < 1 or (g_buffering_samples and packetStreamSize < ideal_buffer_size)) {
+		if (!g_buffering_samples) {
 			send_debug_message("[Radio] Buffering voice packets...\n");
 		}
 		
@@ -303,7 +337,8 @@ void play_samples(bool buffering) {
 		g_packet_idx = 1;
 		
 		send_debug_message("Buffering voice packets " + packetStreamSize + " / " + ideal_buffer_size + "\n");
-		g_Scheduler.SetTimeout("play_samples", 0.1f, true);
+		g_buffering_samples = true;
+		g_next_play_samples = g_EngineFuncs.Time() + 0.1f;
 		return;
 	}
 	
@@ -416,9 +451,11 @@ void play_samples(bool buffering) {
 	
 	g_packet_idx++;
 	
+	g_buffering_samples = false;
+	
 	if (nextDelay < 0) {
-		play_samples(false);
+		play_samples();
 	} else {
-		g_Scheduler.SetTimeout("play_samples", nextDelay, false);
+		g_next_play_samples = g_EngineFuncs.Time() + nextDelay;
 	}	
 }

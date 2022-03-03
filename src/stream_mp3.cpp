@@ -106,4 +106,5 @@ void streamMp3(string fileName, ThreadInputBuffer* inputBuffer, int sampleRate, 
 	delete[] resampledPcm;
 	delete[] buffer;
 	inputBuffer->flush();
+	fclose(file);
 }

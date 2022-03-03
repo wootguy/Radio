@@ -112,7 +112,8 @@ int main(int argc, const char **argv)
 					newStreams.push_back(inputStreams[i]);
 					continue;
 				}
-				fprintf(stderr, "Finished %s\n", inputStreams[i]->resourceName.c_str());
+				remove(inputStreams[i]->resourceName.c_str());
+				fprintf(stderr, "Deleted %s\n", inputStreams[i]->resourceName.c_str());
 				delete inputStreams[i];
 				continue;
 			}
