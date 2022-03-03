@@ -17,12 +17,15 @@
 // - read volume level from ambient_music when scripts are able to read it from the bsp
 // - set voice ent to DJ or requester if server is full, instead of player 0
 // - option to block requests from specific player
+// - use playerthink hook or smth so that game_end screen plays music
+// - music not playing mariokeys_v1
+// - delete old tts files
 
 const string SONG_FILE_PATH = "scripts/plugins/Radio/songs.txt";
 const string MUSIC_PACK_PATH = "scripts/plugins/Radio/music_packs.txt";
 const int MAX_SERVER_ACTIVE_SONGS = 16;
 const int SONG_REQUEST_TIMEOUT = 20;
-const int SONG_START_TIMEOUT = 10; // max time to wait before cancelling a song that never started
+const int SONG_START_TIMEOUT = 20; // max time to wait before cancelling a song that never started
 
 CCVar@ g_inviteCooldown;
 CCVar@ g_requestCooldown;
@@ -37,6 +40,7 @@ CClientCommand _radio2("radiodbg", "radio commands", @consoleCmd );
 
 dictionary g_player_states;
 array<Channel> g_channels;
+string channel_listener_file = "scripts/plugins/store/radio_listeners.txt";
 
 array<int> g_player_lag_status;
 uint g_song_id = 1;
@@ -73,6 +77,7 @@ class PlayerState {
 	bool neverUsedBefore = true;
 	bool isDebugging = false;
 	bool requestsAllowed = true;
+	bool blockInvites = false;
 	
 	bool reliablePackets = false; // send packets on the reliable stream to fight packet loss
 	bool startedReliablePackets = false;
@@ -154,8 +159,8 @@ class Song {
 	string args; // playback args (time offset)
 	float loadTime; // time that song started waiting to start after loading
 	
-	string getClippedName(int length) {
-		string name = getName();
+	string getClippedName(int length, bool ascii) {
+		string name = getName(ascii);
 		
 		if (int(name.Length()) > length) {
 			int sz = (length-4) / 2;
@@ -165,11 +170,29 @@ class Song {
 		return name;
 	}
 	
-	string getName() const {
+	string getName(bool ascii) const {
+		string name = artist + " - " + title;
 		if (artist.Length() == 0) {
-			return title.Length() > 0 ? title : path;
+			name = title.Length() > 0 ? title : path;
 		}
-		return artist + " - " + title;
+		
+		if (!ascii) {
+			return name;
+		}
+		
+		string ascii_name = "";
+		
+		for (uint i = 0; i < name.Length(); i++) {
+			if (name[i] >= 32 && name[i] <= 126) {
+				ascii_name += name[i];
+			}
+		}
+		
+		if (ascii_name.Length() == 0) {
+			ascii_name = "?";
+		}
+		
+		return ascii_name;
 	}
 	
 	int getTimeLeft() {
@@ -228,8 +251,9 @@ void PluginInit() {
 	}
 	
 	g_Scheduler.SetInterval("radioThink", 0.5f, -1);
+	g_Scheduler.SetInterval("writeChannelListeners", 60*10, -1);
+	g_Scheduler.SetInterval("updateVoiceSlotIdx", 10, -1);
 	
-	updateVoiceSlotIdx();
 	load_samples();
 	play_samples(false);
 	
@@ -237,6 +261,90 @@ void PluginInit() {
 	
 	send_voice_server_message("Radio\\en\\100\\.mstop");
 	send_voice_server_message("Radio\\en\\100\\.pause_packets");
+	
+	loadChannelListeners();
+	updateSleepState();
+}
+
+void PluginExit() {
+	writeChannelListeners();
+}
+
+void writeChannelListeners() {
+	File@ file = g_FileSystem.OpenFile( channel_listener_file, OpenFile::WRITE );
+	
+	if (file is null or !file.IsOpen()) {
+		string text = "[Radio] Failed to open: " + channel_listener_file + "\n";
+		println(text);
+		g_Log.PrintF(text);
+		return;
+	}
+	
+	array<array<string>> radio_listeners;
+	for (uint i = 0; i < g_channels.size(); i++) {
+		radio_listeners.insertLast(array<string>());
+	}
+	int numWrites = 0;
+	
+	array<string>@ states = g_player_states.getKeys();
+	for (uint i = 0; i < states.length(); i++)
+	{
+		PlayerState@ state = cast< PlayerState@ >(g_player_states[states[i]]);
+		if (state.channel >= 0 and state.channel < int(g_channels.size())) {
+			radio_listeners[state.channel].insertLast(states[i]);
+		}
+	}
+	
+	for (uint i = 0; i < g_channels.size(); i++) {
+		file.Write("\\" + i + "\\\n");
+		
+		for (uint k = 0; k < radio_listeners[i].size(); k++) {
+			file.Write(radio_listeners[i][k] + "\n");
+			numWrites++;
+		}
+	}
+	
+	file.Close();
+	g_PlayerFuncs.ClientPrintAll(HUD_PRINTCONSOLE, "[Radio] Wrote " + numWrites + " listener ids to file.\n");
+}
+
+void loadChannelListeners() {
+	File@ file = g_FileSystem.OpenFile( channel_listener_file, OpenFile::READ );
+	
+	if (file is null or !file.IsOpen()) {
+		string text = "[Radio] Failed to open: " + channel_listener_file + "\n";
+		println(text);
+		g_Log.PrintF(text);
+		return;
+	}
+	
+	int channelList = -1;
+	int loadedStates = 0;
+	while (!file.EOFReached()) {
+		string line;
+		file.ReadLine(line);
+		
+		if (line.IsEmpty()) {
+			continue;
+		}
+		
+		if (line[0] == '\\') {
+			channelList = atoi(line.SubString(1,2));
+			if (channelList < 0 or channelList >= int(g_channels.size())) {
+				channelList = -1;
+			}
+			continue;
+		}
+		
+		PlayerState state;
+		state.channel = channelList;
+		g_player_states[line] = state;
+		loadedStates++;
+	}
+	
+	println("[Radio] Loaded " + loadedStates + " states from file");
+	
+	file.Close();
 }
 
 void MapInit() {
@@ -249,8 +357,6 @@ void MapInit() {
 		state.lastRequest = -9999;
 		state.lastDjToggle = -9999;
 		state.lastSongSkip = -9999;
-		state.startedReliablePackets = false;
-		state.reliablePacketsStart = 999999;
 	}
 	
 	for (uint i = 0; i < g_channels.size(); i++) {
@@ -322,9 +428,10 @@ HookReturnCode MapChange() {
 HookReturnCode ClientJoin(CBasePlayer@ plr) {
 	PlayerState@ state = getPlayerState(plr);
 	string id = getPlayerUniqueId(plr);
+
 	state.playAfterFullyLoaded = true;
-	
-	updateVoiceSlotIdx();
+	state.startedReliablePackets = false;
+	state.reliablePacketsStart = 999999;
 	
 	return HOOK_CONTINUE;
 }
@@ -345,7 +452,7 @@ HookReturnCode ClientSay( SayParameters@ pParams ) {
 	CBasePlayer@ plr = pParams.GetPlayer();
 	const CCommand@ args = pParams.GetArguments();
 	
-	if (doCommand(plr, args, false)) {
+	if (!pParams.ShouldHide and doCommand(plr, args, false)) {
 		pParams.ShouldHide = true;
 	}
 	
@@ -400,6 +507,54 @@ void loadCrossPluginLoadState() {
 	}
 }
 
+// pick entities to emit voice data from (must be a player slot or else it doesn't always work)
+void updateVoiceSlotIdx() {
+	int old_radio_idx = g_radio_ent_idx;
+	int old_voice_idx = g_voice_ent_idx;
+	
+	int found = 0;
+	for ( int i = 1; i <= g_Engine.maxClients; i++ ) {
+		CBasePlayer@ p = g_PlayerFuncs.FindPlayerByIndex(i);
+		
+		if (p is null or !p.IsConnected()) {
+			if (found == 0) {
+				g_radio_ent_idx = i+1;
+				found++;
+			} else {
+				g_voice_ent_idx = i+1;
+				found++;
+				break;
+			}
+		}
+	}
+	
+	if (found == 0) {
+		g_radio_ent_idx = 0;
+		g_voice_ent_idx = 1;
+	} else {
+		g_voice_ent_idx = 0;
+	}
+
+	if (old_radio_idx != g_radio_ent_idx or old_voice_idx != g_voice_ent_idx) {
+		// refresh voice labels
+		println("Refresh voice labels");
+		for ( int i = 1; i <= g_Engine.maxClients; i++ )
+		{
+			CBasePlayer@ plr = g_PlayerFuncs.FindPlayerByIndex(i);
+			
+			if (plr is null or !plr.IsConnected()) {
+				continue;
+			}
+			
+			PlayerState@ state = getPlayerState(plr);
+			
+			if (state.channel != -1 and g_channels[state.channel].activeSongs.size() > 0) {
+				clientCommand(plr, "stopsound");
+			}
+		}
+	}
+}
+
 void updateSleepState() {
 	bool old_listeners = g_any_radio_listeners;
 	g_any_radio_listeners = false;
@@ -420,8 +575,6 @@ void updateSleepState() {
 		}
 	}
 	
-	println("UHH " + g_any_radio_listeners + " " + old_listeners);
-	
 	if (g_any_radio_listeners != old_listeners) {
 		send_voice_server_message("Radio\\en\\100\\" + (g_any_radio_listeners ? ".resume_packets" : ".pause_packets"));
 	}
@@ -433,7 +586,8 @@ void showConsoleHelp(CBasePlayer@ plr, bool showChatMessage) {
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Type ".radio list" to show who\'s listening.\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Type ".radio lang x" to set your text-to-speech language.\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Type ".radio langs" to list valid text-to-speech languages.\n');
-	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Type ".radio pitch <10-200>" to set your text-to-speech pitch.\n\n');
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Type ".radio pitch <10-200>" to set your text-to-speech pitch.\n');
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Type ".radio block/unblock" to block/unblock radio invites.\n\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'To queue a video, paste a youtube link in the chat. Use the "say" command in console to do this. Example:\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    say https://www.youtube.com/watch?v=b8HO6hba9ZE\n\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'To bypass the queue, add a "!" before your link. Example:\n');
@@ -545,6 +699,14 @@ bool doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 		}
 		else if (args.ArgC() > 1 and args[1] == "help") {
 			showConsoleHelp(plr, !inConsole);
+		}
+		else if (args.ArgC() > 1 and args[1] == "block") {
+			state.blockInvites = true;
+			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] Blocked radio invites.\n");
+		}
+		else if (args.ArgC() > 1 and args[1] == "unblock") {
+			state.blockInvites = false;
+			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] Unblocked radio invites.\n");
 		}
 		else if (args.ArgC() > 1 and args[1] == "lang") {
 			string code = args[2].ToLowercase();
