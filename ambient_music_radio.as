@@ -76,7 +76,7 @@ class ambient_music_radio : ScriptBaseEntity
 	void playSingleUser(CBasePlayer@ plr) {		
 		PlayerState@ state = getPlayerState(cast<CBasePlayer@>(plr));
 		
-		if (state.isRadioListener()) {
+		if (state.isRadioMusicPlaying()) {
 			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTNOTIFY, "[Radio] suppressed map music: " + pev.message + "\n");
 			return;
 		}
