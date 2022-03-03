@@ -17,9 +17,7 @@
 // - read volume level from ambient_music when scripts are able to read it from the bsp
 // - set voice ent to DJ or requester if server is full, instead of player 0
 // - option to block requests from specific player
-// - use playerthink hook or smth so that game_end screen plays music
 // - music not playing mariokeys_v1
-// - delete old tts files
 
 const string SONG_FILE_PATH = "scripts/plugins/Radio/songs.txt";
 const string MUSIC_PACK_PATH = "scripts/plugins/Radio/music_packs.txt";
@@ -228,6 +226,7 @@ void PluginInit() {
 	g_Hooks.RegisterHook(Hooks::Player::ClientDisconnect, @ClientLeave);
 	g_Hooks.RegisterHook(Hooks::Player::ClientSay, @ClientSay);
 	g_Hooks.RegisterHook(Hooks::Game::MapChange, @MapChange);
+	g_Hooks.RegisterHook(Hooks::Player::PlayerPostThink, @PlayerPostThink );
 	
 	@g_inviteCooldown = CCVar("inviteCooldown", 600, "Radio invite cooldown", ConCommandFlag::AdminOnly);
 	@g_requestCooldown = CCVar("requestCooldown", 300, "Song request cooldown", ConCommandFlag::AdminOnly);
@@ -255,7 +254,7 @@ void PluginInit() {
 	g_Scheduler.SetInterval("updateVoiceSlotIdx", 10, -1);
 	
 	load_samples();
-	play_samples(false);
+	play_samples();
 	
 	g_player_lag_status.resize(33);
 	
@@ -781,6 +780,11 @@ bool doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 			
 			g_song_id += 1;
 			
+			if (playNow and int(chan.activeSongs.size()) >= chan.maxStreams) {
+				g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] This channel can't play more than " + chan.maxStreams + " videos at the same time.\n");
+				return true;
+			}
+			
 			if (!canDj)  {
 				if (int(chan.queue.size()) >= g_maxQueue.GetInt()) {
 					g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] Can't request now. The queue is full.\n");
@@ -793,11 +797,7 @@ bool doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 			}
 			else {
 				if (playNow) {
-					if (int(chan.activeSongs.size()) >= chan.maxStreams) {
-						g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] This channel can't play more than " + chan.maxStreams + " videos at the same time.\n");
-					} else {
-						chan.playSong(song);
-					}
+					chan.playSong(song);
 				} else {
 					chan.queueSong(plr, song);
 				}

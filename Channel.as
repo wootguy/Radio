@@ -408,10 +408,10 @@ class Channel {
 				if (!song.messageSent) {
 					if (currentDj.Length() == 0) {
 						announce("" + song.requester + " played: " + song.getName(false));
-						announce("" + song.requester + " played: " + song.path, HUD_PRINTCONSOLE);
+						announce("" + song.requester + " played: " + song.path + " " + song.args, HUD_PRINTCONSOLE);
 					} else {
 						announce("Now playing: " + song.getName(false)); // TODO: don't show this if hud is enabled
-						announce("Now playing: " + song.path, HUD_PRINTCONSOLE);
+						announce("Now playing: " + song.path + " " + song.args, HUD_PRINTCONSOLE);
 					}
 					song.messageSent = true;
 				}
@@ -419,7 +419,7 @@ class Channel {
 			} else if (!song.messageSent) {
 				song.messageSent = true;
 				announce("" + song.requester + " queued: " + song.getName(false), currentDj.Length() == 0 ? HUD_PRINTTALK : HUD_PRINTNOTIFY);
-				announce("" + song.requester + " queued: " + song.path, HUD_PRINTCONSOLE);
+				announce("" + song.requester + " queued: " + song.path + " " + song.args, HUD_PRINTCONSOLE);
 			}
 			
 			return;
