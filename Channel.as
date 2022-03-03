@@ -73,6 +73,11 @@ class Channel {
 				if (!wasEmpty) {
 					emptyTime = g_EngineFuncs.Time();
 					wasEmpty = true;
+					
+					array<CBasePlayer@> listeners = getChannelListeners();
+					for (uint i = 0; i < listeners.size(); i++) {
+						AmbientMusicRadio::toggleMapMusic(listeners[i], true);
+					}
 				}
 			}
 		} else {
@@ -124,7 +129,7 @@ class Channel {
 			int songLength = (song.lengthMillis + 999) / 1000;
 			string timeStr = "(" + formatTime(timePassed) + " / " + formatTime(songLength) + ")";
 			string timeleft = song.loadState == SONG_LOADED ? timeStr : "(--:-- / --:--)";
-			songStr += song.getClippedName(96) + "  " + timeleft;
+			songStr += song.getClippedName(96, true) + "  " + timeleft;
 		}
 		
 		if (activeSongs.size() > maxLines) {
@@ -138,7 +143,7 @@ class Channel {
 		string label = "";
 		
 		if (activeSongs.size() > 0) {
-			label += "\\w" + activeSongs[0].getClippedName(48);
+			label += "\\w" + activeSongs[0].getClippedName(48, true);
 			
 			if (activeSongs.size() > 1) {
 				label += "\\d (+" + (activeSongs.size()-1) + " others)";
@@ -170,8 +175,8 @@ class Channel {
 					println("packet " + packetId + " triggered start of song " + packetListeners[i].songId);
 					song.loadState = SONG_LOADED;
 					song.startTime = DateTime();
-					RelaySay(name + "|" + song.getName() + "|" + (getDj() !is null ? string(getDj().pev.netname) : "(none)"));
-					advertise("Now playing: " + song.getName());
+					RelaySay(name + "|" + song.getName(false) + "|" + (getDj() !is null ? string(getDj().pev.netname) : "(none)"));
+					advertise("Now playing: " + song.getName(false));
 					
 					
 					int packetDiff = packetId - packetListeners[i].packetId;
@@ -186,34 +191,6 @@ class Channel {
 				i--;
 			}
 		}
-	}
-	
-	string getSongMenuLabel(Song@ song) {
-		string label = song.getName();
-			
-		bool isInQueue = false;
-		bool nowPlaying = false;
-		for (uint k = 0; k < queue.size(); k++) {
-			if (queue[k].path == song.path) {
-				nowPlaying = k == 0;
-				isInQueue = k != 0;
-				break;
-			}
-		}
-		
-		if (nowPlaying || isInQueue) {
-			label = "\\r" + label;
-		} else {
-			label = "\\w" + label;
-		}
-		
-		if (nowPlaying) {
-			label += " \\d(now playing)";
-		} else if (isInQueue) {
-			label += " \\d(in queue)";
-		}
-		
-		return label;
 	}
 	
 	string getQueueCountString() {
@@ -430,10 +407,10 @@ class Channel {
 			if (song.isPlaying) {
 				if (!song.messageSent) {
 					if (currentDj.Length() == 0) {
-						announce("" + song.requester + " played: " + song.getName());
+						announce("" + song.requester + " played: " + song.getName(false));
 						announce("" + song.requester + " played: " + song.path, HUD_PRINTCONSOLE);
 					} else {
-						announce("Now playing: " + song.getName()); // TODO: don't show this if hud is enabled
+						announce("Now playing: " + song.getName(false)); // TODO: don't show this if hud is enabled
 						announce("Now playing: " + song.path, HUD_PRINTCONSOLE);
 					}
 					song.messageSent = true;
@@ -441,7 +418,7 @@ class Channel {
 				song.startTime = DateTime(); // don't skip the song if the video was restarted at an offset due to an error
 			} else if (!song.messageSent) {
 				song.messageSent = true;
-				announce("" + song.requester + " queued: " + song.getName(), currentDj.Length() == 0 ? HUD_PRINTTALK : HUD_PRINTNOTIFY);
+				announce("" + song.requester + " queued: " + song.getName(false), currentDj.Length() == 0 ? HUD_PRINTTALK : HUD_PRINTNOTIFY);
 				announce("" + song.requester + " queued: " + song.path, HUD_PRINTCONSOLE);
 			}
 			
@@ -455,7 +432,7 @@ class Channel {
 			
 			announce("" + requester + " requested: " + songRequest.title);
 			announce("" + requester + " requested: " + songRequest.path, HUD_PRINTCONSOLE);
-			openMenuSongRequest(EHandle(getDj()), requester, songRequest.getClippedName(64), id);
+			openMenuSongRequest(EHandle(getDj()), requester, songRequest.getClippedName(64, true), id);
 			return;
 		}
 		

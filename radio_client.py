@@ -3,7 +3,7 @@
 # youtube shorts links dont work
 # delete tts mp3s after finished
 
-import time, os, sys, queue, random, pafy, datetime, socket, subprocess
+import time, os, sys, queue, random, pafy, datetime, socket, subprocess, traceback
 from threading import Thread, Lock
 from gtts import gTTS
 
@@ -11,7 +11,6 @@ sven_root = '../../../..'
 csound_path = os.path.join(sven_root, 'svencoop_downloads/sound/twlz')
 tts_enabled = True
 g_media_players = []
-g_chatsounds = []
 tts_id = 0
 g_tts_players = {}
 command_queue = queue.Queue() # commands from the server
@@ -110,11 +109,6 @@ g_valid_langs = {
 	'ur': {'tld': 'com', 'code': 'ur', 'name': 'Urdu'},
 	'vi': {'tld': 'com', 'code': 'vi', 'name': 'Vietnamese'}
 }
-
-def load_all_chatsounds():
-	file1 = open('chatsounds.txt', 'r')
-	for line in file1.readlines():
-		g_chatsounds.append(line.split()[0])
 
 def format_time(seconds):
 	hours = int(seconds / (60*60))
@@ -347,7 +341,7 @@ def command_loop():
 						
 					continue
 				
-				data_stream += data.decode()
+				data_stream += data.decode('utf-8', errors='ignore')
 				#print("Got data %s" % data.decode())
 				last_tcp_heartbeat = datetime.datetime.now()
 				
@@ -357,7 +351,7 @@ def command_loop():
 					command_queue.put(command)
 	 
 		except Exception as e:
-			print(e)
+			traceback.print_exc()
 			
 
 def transmit_voice():
@@ -466,8 +460,6 @@ def steam_voice_stderr():
 		if not line:
 			continue
 		print("[steam_voice] %s" % line)
-
-load_all_chatsounds()
 
 process_name = 'steam_voice.exe' if os.name == 'nt' else 'steam_voice'
 steam_voice = subprocess.Popen(os.path.join('lib', process_name),
@@ -637,7 +629,7 @@ while True:
 		continue
 	
 	if tts_enabled:			
-		if not had_prefix and line.strip().lower() in g_chatsounds:
+		if not had_prefix:
 			continue
 		
 		t = Thread(target = play_tts, args =(name, line, tts_id, lang, pitch, had_prefix, ))

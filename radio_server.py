@@ -42,7 +42,7 @@ def tcp_listen(socket, response_data):
 	global response_queue
 	
 	try:
-		data = socket.recv(32).decode()
+		data = socket.recv(32).decode('utf-8', errors='ignore')
 		if data:
 			last_client_heartbeat = datetime.datetime.now()
 			response_data += data
@@ -151,7 +151,7 @@ def send_packets_to_plugin(socket, all_packets, force_send):
 	
 	last_file_write = datetime.datetime.now()
 	
-	with open(voice_data_file, "w") as f:
+	with open(voice_data_file, "w", encoding='utf8', errors='ignore') as f:
 		lost = 0
 		for packet in all_packets[:buffer_max]:
 			if type(packet) is int:

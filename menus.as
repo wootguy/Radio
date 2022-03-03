@@ -168,6 +168,9 @@ void callbackMenuChannelSelect(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber
 		
 		g_channels[state.channel].announce("" + plr.pev.netname + " tuned in.", HUD_PRINTNOTIFY, plr);
 		updateSleepState();
+	} else if (option.Find("block-request") == 0) {
+		state.blockInvites = true;
+		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] You will no longer receive radio invites.\n");
 	}
 }
 
@@ -187,6 +190,7 @@ void callbackMenuRequest(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, cons
 	if (option.Find("play-request") == 0) {
 		array<string> parts = option.Split(":");
 		int channelId = atoi(parts[1]);
+		g_channels[channelId].announce("Request will be played now: " + g_channels[channelId].songRequest.title, HUD_PRINTCONSOLE);
 		g_channels[channelId].songRequest.requester = plr.pev.netname;
 		g_channels[channelId].playSong(g_channels[channelId].songRequest);
 		g_channels[channelId].songRequest.id = 0;
@@ -256,7 +260,7 @@ void callbackMenuEditQueue(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, co
 		int newSlot = slot;
 		
 		if (slot > 0) {
-			chan.announce("" + plr.pev.netname + " moved up: " + chan.queue[slot].getName(), HUD_PRINTNOTIFY);
+			chan.announce("" + plr.pev.netname + " moved up: " + chan.queue[slot].getName(false), HUD_PRINTNOTIFY);
 			Song@ temp = chan.queue[slot];
 			@chan.queue[slot] = @chan.queue[slot-1];
 			@chan.queue[slot-1] = @temp;
@@ -270,7 +274,7 @@ void callbackMenuEditQueue(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, co
 		int newSlot = slot;
 		
 		if (slot < int(chan.queue.size())-1) {
-			chan.announce("" + plr.pev.netname + " moved down: " + chan.queue[slot].getName(), HUD_PRINTNOTIFY);
+			chan.announce("" + plr.pev.netname + " moved down: " + chan.queue[slot].getName(false), HUD_PRINTNOTIFY);
 			Song@ temp = chan.queue[slot];
 			@chan.queue[slot] = @chan.queue[slot+1];
 			@chan.queue[slot+1] = @temp;
@@ -284,7 +288,7 @@ void callbackMenuEditQueue(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, co
 		
 		if (slot < int(chan.queue.size())) {
 			HUD msgType = chan.hasDj() ? HUD_PRINTNOTIFY : HUD_PRINTTALK;
-			chan.announce("" + plr.pev.netname + " removed: " + chan.queue[slot].getName(), msgType);
+			chan.announce("" + plr.pev.netname + " removed: " + chan.queue[slot].getName(false), msgType);
 			chan.queue.removeAt(slot);
 		}
 		
@@ -385,6 +389,10 @@ void callbackMenuInvite(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const
 			if (targetState.channel == state.channel) {
 				continue;
 			}
+			if (targetState.blockInvites) {
+				g_PlayerFuncs.ClientPrint(target, HUD_PRINTNOTIFY, "[Radio] Blocked invite from " + plr.pev.netname + "\n");
+				continue;
+			}
 			
 			g_Scheduler.SetTimeout("openMenuInviteRequest", 0.5f, EHandle(target), "" + plr.pev.netname, state.channel);
 			inviteCount++;
@@ -411,11 +419,16 @@ void callbackMenuInvite(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const
 		
 		if (target !is null) {
 			PlayerState@ targetState = getPlayerState(target);
-			g_Scheduler.SetTimeout("openMenuInviteRequest", 0.5f, EHandle(target), "" + plr.pev.netname, state.channel);
 			
-			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] Invitation sent to " + target.pev.netname + "\n");
+			if (!targetState.blockInvites) {
+				g_Scheduler.SetTimeout("openMenuInviteRequest", 0.5f, EHandle(target), "" + plr.pev.netname, state.channel);
 			
-			state.lastInviteTime[targetId] = g_Engine.time;
+				g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] Invitation sent to " + target.pev.netname + "\n");
+				
+				state.lastInviteTime[targetId] = g_Engine.time;
+			} else {
+				g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] " + target.pev.netname + " has blocked invites.\n");
+			}
 		} else {
 			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] Invitation failed. Player left the game.\n");
 		}
@@ -466,7 +479,7 @@ void openMenuRadio(EHandle h_plr) {
 	g_menus[eidx].AddItem("\\wStop video(s)\\y", any("stop-menu"));
 	g_menus[eidx].AddItem("\\wHUD: " + (state.showHud ? "on" : "off") + "\\y", any("hud"));
 	g_menus[eidx].AddItem("\\wMute: " + muted + "\\y", any("toggle-mute"));
-	g_menus[eidx].AddItem((chan.spamMode ? "\\r" : "\\w") + (isDj ? "Quit DJ" : "Become DJ") + "\\y", any("become-dj"));
+	g_menus[eidx].AddItem((chan.spamMode ? "\\d" : "\\w") + (isDj ? "Quit DJ" : "Become DJ") + "\\y", any("become-dj"));
 	g_menus[eidx].AddItem("\\wInvite\\y", any("invite"));
 	
 	g_menus[eidx].Register();
@@ -558,7 +571,7 @@ void openMenuEditQueue(EHandle h_plr, int selectedSlot) {
 		g_menus[eidx].AddItem("\\w..\\y", any("main-menu"));
 		
 		for (uint i = 0; i < chan.queue.size(); i++) {
-			string label = "\\w" + chan.queue[i].getClippedName(48) + "\\y";
+			string label = "\\w" + chan.queue[i].getClippedName(48, true) + "\\y";
 			
 			// try to keep the menu spacing the same in both edit modes
 			if (i == chan.queue.size()-1) {
@@ -584,7 +597,7 @@ void openMenuEditQueue(EHandle h_plr, int selectedSlot) {
 		
 		for (uint i = 0; i < chan.queue.size(); i++) {
 			string color = int(i) == selectedSlot ? "\\r" : "\\w";
-			string name = int(i) == selectedSlot ? chan.queue[i].getClippedName(120) : chan.queue[i].getClippedName(32);
+			string name = int(i) == selectedSlot ? chan.queue[i].getClippedName(120, true) : chan.queue[i].getClippedName(32, true);
 			label += "\n" + color + "    " + name + "\\y";
 		}
 		
@@ -615,13 +628,14 @@ void openMenuInviteRequest(EHandle h_plr, string asker, int channel) {
 	g_menus[eidx].SetTitle("\\yYou're invited to listen to\nthe radio on " + g_channels[channel].name + "\n-" + asker + "\n");
 	
 	g_menus[eidx].AddItem("\\wAccept\\y", any("channel-" + channel));
+	g_menus[eidx].AddItem("\\wIgnore\\y", any("exit"));
 	
-	string label = "\\wDecline\\y";
-	label += "\n\nCurrent song:\n";
+	string label = "\\wBlock invites\\y";
+	label += "\n\nNow playing:\n";
 	
 	label += chan.getCurrentSongString();
 	
-	g_menus[eidx].AddItem(label + "\\y", any("exit"));
+	g_menus[eidx].AddItem(label + "\\y", any("block-requests"));
 	
 	g_menus[eidx].Register();
 	g_menus[eidx].Open(0, 0, plr);
@@ -636,7 +650,7 @@ void openMenuSongRequest(EHandle h_plr, string asker, string songName, int chann
 	int eidx = plr.entindex();
 	
 	@g_menus[eidx] = CTextMenu(@callbackMenuRequest);
-	g_menus[eidx].SetTitle("\\ySong request:\n" + songName + "\n-" + asker + "\n");
+	g_menus[eidx].SetTitle("\\yRadio request from \"" + asker + "\":\n\n" + songName + "\n");
 	
 	g_menus[eidx].AddItem("\\wPlay now\\y", any("play-request:" + channelId));
 	g_menus[eidx].AddItem("\\wAdd to queue\\y", any("queue-request:" + channelId));
@@ -675,8 +689,9 @@ void openMenuInvite(EHandle h_plr) {
 		if (targetState.channel == state.channel) {
 			continue;
 		}
+		string color = targetState.blockInvites ? "\\d" : "\\w";
 		
-		g_menus[eidx].AddItem("\\w" + target.pev.netname + "\\y", any("invite-" + getPlayerUniqueId(target)));
+		g_menus[eidx].AddItem(color + target.pev.netname + "\\y", any("invite-" + getPlayerUniqueId(target)));
 	}
 	
 	g_menus[eidx].Register();
