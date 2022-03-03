@@ -160,7 +160,7 @@ void callbackMenuChannelSelect(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber
 			g_channels[oldChannel].handlePlayerLeave(plr, state.channel);
 		}
 		
-		bool musicIsPlaying = g_channels[state.channel].queue.size() > 0;
+		bool musicIsPlaying = g_channels[state.channel].activeSongs.size() > 0;
 
 		clientCommand(plr, "stopsound");
 		

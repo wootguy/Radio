@@ -52,7 +52,7 @@ class target_cdaudio_radio : ScriptBaseEntity
 			
 			PlayerState@ state = getPlayerState(plr);
 		
-			if (state.isRadioListener()) {
+			if (state.isRadioMusicPlaying()) {
 				g_PlayerFuncs.ClientPrint(plr, HUD_PRINTNOTIFY, "[Radio] suppressed map music: " + soundFile + "\n");
 				continue;
 			} else {

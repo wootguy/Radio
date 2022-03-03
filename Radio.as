@@ -2,8 +2,8 @@
 #include "Channel"
 #include "menus"
 #include "util"
-//#include "target_cdaudio_radio"
-//#include "ambient_music_radio"
+#include "target_cdaudio_radio"
+#include "ambient_music_radio"
 #include "FakeMic"
 #include "TextToSpeech"
 
@@ -128,8 +128,8 @@ class PlayerState {
 		return false;
 	}
 	
-	bool isRadioListener() {
-		return channel >= 0;
+	bool isRadioMusicPlaying() {
+		return channel >= 0 and g_channels[channel].activeSongs.size() > 0;
 	}
 }
 
@@ -364,13 +364,13 @@ void MapInit() {
 }
 
 // for quick plugin reloading (comment out music #include first)
-namespace AmbientMusicRadio { void toggleMapMusic(CBasePlayer@ plr, bool toggleOn) {} } 
+//namespace AmbientMusicRadio { void toggleMapMusic(CBasePlayer@ plr, bool toggleOn) {} } 
 
 int g_replaced_cdaudio = 0;
 int g_replaced_music = 0;
 void MapActivate() {
-	//g_CustomEntityFuncs.RegisterCustomEntity( "target_cdaudio_radio", "target_cdaudio_radio" );
-	//g_CustomEntityFuncs.RegisterCustomEntity( "AmbientMusicRadio::ambient_music_radio", "ambient_music_radio" );
+	g_CustomEntityFuncs.RegisterCustomEntity( "target_cdaudio_radio", "target_cdaudio_radio" );
+	g_CustomEntityFuncs.RegisterCustomEntity( "AmbientMusicRadio::ambient_music_radio", "ambient_music_radio" );
 	
 	g_replaced_cdaudio = 0;
 	g_replaced_music = 0;
@@ -479,10 +479,10 @@ void radioThink() {
 			println("Toggline map music for fully loaded player: " + plr.pev.netname);
 			state.playAfterFullyLoaded = false;
 			state.reliablePacketsStart = g_EngineFuncs.Time() + 10;
-			AmbientMusicRadio::toggleMapMusic(plr, !state.isRadioListener());
+			AmbientMusicRadio::toggleMapMusic(plr, !(state.isRadioMusicPlaying()));
 		}
 
-		if (state.isRadioListener() and state.showHud) {
+		if (state.channel >= 0 and state.showHud) {
 			g_channels[state.channel].updateHud(plr, state);
 		}
 	}
