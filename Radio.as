@@ -17,7 +17,10 @@
 // - read volume level from ambient_music when scripts are able to read it from the bsp
 // - set voice ent to DJ or requester if server is full, instead of player 0
 // - option to block requests from specific player
-// - music not playing mariokeys_v1
+// - remove buffer for less delay
+// - shorts urls don't work: https://www.youtube.com/shorts/U4WTB8-ssRM
+// - console commands for stopping vids + speech
+// .mstop still works, make commands for them instead
 
 const string SONG_FILE_PATH = "scripts/plugins/Radio/songs.txt";
 const string MUSIC_PACK_PATH = "scripts/plugins/Radio/music_packs.txt";
@@ -432,6 +435,8 @@ HookReturnCode ClientJoin(CBasePlayer@ plr) {
 	state.startedReliablePackets = false;
 	state.reliablePacketsStart = 999999;
 	
+	updateSleepState();
+	
 	return HOOK_CONTINUE;
 }
 
@@ -515,12 +520,12 @@ void updateVoiceSlotIdx() {
 	for ( int i = 1; i <= g_Engine.maxClients; i++ ) {
 		CBasePlayer@ p = g_PlayerFuncs.FindPlayerByIndex(i);
 		
-		if (p is null or !p.IsConnected()) {
+		if (p is null) {
 			if (found == 0) {
-				g_radio_ent_idx = i+1;
+				g_radio_ent_idx = i-1;
 				found++;
 			} else {
-				g_voice_ent_idx = i+1;
+				g_voice_ent_idx = i-1;
 				found++;
 				break;
 			}
@@ -530,7 +535,7 @@ void updateVoiceSlotIdx() {
 	if (found == 0) {
 		g_radio_ent_idx = 0;
 		g_voice_ent_idx = 1;
-	} else {
+	} else if (found == 1) {
 		g_voice_ent_idx = 0;
 	}
 
@@ -581,15 +586,16 @@ void updateSleepState() {
 
 void showConsoleHelp(CBasePlayer@ plr, bool showChatMessage) {
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '------------------------------ Radio Help ------------------------------\n\n');
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'The radio speaks chat messages aloud and can play audio from youtube/soundcloud/etc.\n\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Type ".radio" to open the radio menu.\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Type ".radio list" to show who\'s listening.\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Type ".radio lang x" to set your text-to-speech language.\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Type ".radio langs" to list valid text-to-speech languages.\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Type ".radio pitch <10-200>" to set your text-to-speech pitch.\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Type ".radio block/unblock" to block/unblock radio invites.\n\n');
-	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'To queue a video, paste a youtube link in the chat. Use the "say" command in console to do this. Example:\n');
-	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    say https://www.youtube.com/watch?v=b8HO6hba9ZE\n\n');
-	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'To bypass the queue, add a "!" before your link. Example:\n');
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'To queue a video, paste a link in the chat with a "~" prefix. Use the "say" command in console to do this. Example:\n');
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    say ~https://www.youtube.com/watch?v=b8HO6hba9ZE\n\n');
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'To bypass the queue, use "!" instead of "~". Example:\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    say !https://www.youtube.com/watch?v=b8HO6hba9ZE\n\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'To play a video at a specific time, add a timecode after the link. Example:\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    say !https://www.youtube.com/watch?v=b8HO6hba9ZE 0:27\n\n');
@@ -701,11 +707,13 @@ bool doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 		}
 		else if (args.ArgC() > 1 and args[1] == "block") {
 			state.blockInvites = true;
-			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] Blocked radio invites.\n");
+			state.requestsAllowed = false;
+			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] Blocked radio invites/requests.\n");
 		}
 		else if (args.ArgC() > 1 and args[1] == "unblock") {
 			state.blockInvites = false;
-			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] Unblocked radio invites.\n");
+			state.requestsAllowed = true;
+			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] Unblocked radio invites/requests.\n");
 		}
 		else if (args.ArgC() > 1 and args[1] == "lang") {
 			string code = args[2].ToLowercase();
@@ -760,16 +768,14 @@ bool doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 		}
 		
 		return true;
-	} else if (lowerArg.Find("https://www.youtube.com") <= 1 || lowerArg.Find("https://youtu.be") <= 1) {
+	} else if (lowerArg.Find("https://") == 1 || lowerArg.Find("http://") == 1) {
 		if (state.channel != -1) {
 			Channel@ chan = @g_channels[state.channel];
 			bool canDj = chan.canDj(plr);
 			
 			string url = args[0];
 			bool playNow = url[0] == '!';
-			if (playNow) {
-				url = url.SubString(1);
-			}
+			url = url.SubString(1);
 			
 			Song song;
 			song.path = url;
@@ -806,7 +812,7 @@ bool doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 			return true;
 		}
 	} else {
-		if (g_any_radio_listeners) {
+		if (g_any_radio_listeners and lowerArg.Find("https://") != 0 and lowerArg.Find("http://") != 0) {
 			send_voice_server_message("" + plr.pev.netname + "\\" + state.lang + "\\" + state.pitch + "\\" + args.GetCommandString());
 		}
 		if (args[0].Length() > 0 and args[0][0] == '~') {

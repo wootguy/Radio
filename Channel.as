@@ -111,7 +111,7 @@ class Channel {
 			djName = " - Waiting " + reserveTimeLeft + "s for DJ";
 		}
 		
-		string msg = name + djName + " (" + getChannelListeners().size() + " listening)";
+		string msg = name + djName + " (" + getChannelListeners(true).size() + " listening)";
 		string songStr = "";
 		
 		if (state.muteMode == MUTE_VIDEOS) {
@@ -294,11 +294,13 @@ class Channel {
 		}
 	}
 	
-	void cancelSong(uint songId) {
+	void cancelSong(uint songId, string reason) {
 		Song@ song = findSongById(songId);
 		
 		if (song !is null) {
 			song.loadState = SONG_FAILED;
+			announce("Failed to play: " + song.path);
+			announce(reason);
 		} else {
 			println("Failed to cancel song with id " + songId);
 		}
@@ -439,7 +441,7 @@ class Channel {
 		println("Got info for songId " + songId + " which isn't queued in channel: " + name);
 	}
 	
-	array<CBasePlayer@> getChannelListeners() {
+	array<CBasePlayer@> getChannelListeners(bool excludeVideoMuters=false) {
 		array<CBasePlayer@> listeners;
 		
 		for ( int i = 1; i <= g_Engine.maxClients; i++ )
@@ -451,6 +453,10 @@ class Channel {
 			}
 			
 			PlayerState@ state = getPlayerState(plr);
+			
+			if (excludeVideoMuters and state.muteMode == MUTE_VIDEOS) {
+				continue;
+			}
 			
 			if (state.channel == id) {
 				listeners.insertLast(plr);

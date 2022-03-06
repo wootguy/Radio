@@ -14,11 +14,11 @@ voice_cmd_file = '../../../../svencoop/scripts/plugins/store/_tovoice.txt'
 # higher than 16 and plugin might send packets so fast that the stream cuts out
 # special throttling logic is needed for higher buffer sizes
 buffer_max = 4
-buffered_buffers = 3 # number of buffers to hold onto before sending to the plugin. Higher = fewer lost packets
+buffered_buffers = 1 # number of buffers to hold onto before sending to the plugin. Higher = fewer lost packets
 
 last_file_write = datetime.datetime.now()
 last_heartbeat = datetime.datetime.now()
-min_time_between_writes = 0.1 # give the plugin time to load the file. Keep value in sync with plugin
+min_time_between_writes = 0.15 # give the plugin time to load the file. Keep value in sync with plugin
 time_between_heartbeats = 1 # time between packets to the client, letting it know the server is still listening
 response_queue = queue.Queue()
 last_tcp_heartbeat = datetime.datetime.now()
