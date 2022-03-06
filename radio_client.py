@@ -3,9 +3,12 @@
 # youtube shorts links dont work
 # delete tts mp3s after finished
 
-import time, os, sys, queue, random, pafy, datetime, socket, subprocess, traceback
+import time, os, sys, queue, random, datetime, socket, subprocess, traceback, json
 from threading import Thread, Lock
 from gtts import gTTS
+
+#import youtube_dl
+import yt_dlp as youtube_dl
 
 sven_root = '../../../..'
 csound_path = os.path.join(sven_root, 'svencoop_downloads/sound/twlz')
@@ -150,28 +153,50 @@ def get_youtube_info(url, channel, songId):
 	global cached_video_urls
 	
 	try:
-		playurl = ''
-		title = '???'
-		length = 0
-		if url in cached_video_urls:
-			print("Use cached url " + url)
-			playurl = cached_video_urls[url]['url']
-			title = cached_video_urls[url]['title']
-			length = cached_video_urls[url]['length']
-		else:
+		if url not in cached_video_urls:
 			print("Fetch best audio " + url)
-			video = pafy.new(url)
-			best = video.getbestaudio()
-			playurl = best.url
-			length = int(video.length)
-			title = video.title
-			cached_video_urls[url] = {'url': playurl, 'title': title, 'length': int(video.length)}
-			#print("BEST URL: " + playurl)
+			cached_video_urls[url] = load_info_from_url(url)
+		else:
+			print("Use cached url " + url)
+			
+		playurl = cached_video_urls[url]['url']
+		title = cached_video_urls[url]['title']
+		length = cached_video_urls[url]['length']
 			
 		send_queue.put("info:%s:%s:%s:%s" % (channel, songId, length, title))
 	except Exception as e:
 		print(e)
 		send_queue.put("~Failed load video info for: " + url)
+
+def load_info_from_url(url):
+	with youtube_dl.YoutubeDL() as ydl:
+		ydl_info = ydl.extract_info(url, download=False)
+		
+		title = ydl_info['title']
+		length = ydl_info['duration']
+		audio_streams = [i for i in ydl_info['formats'] if i.get('acodec', 'none') != 'none' or i.get('vcodec', 'none') == 'none']
+		audio_only_streams = [i for i in audio_streams if i.get('vcodec', 'none') == 'none']
+		
+		best_stream = None
+		if len(audio_only_streams):
+			for stream in audio_only_streams:
+				if 'manifest_url' in stream or stream['ext'] == 'mhtml':
+					continue # ffmpeg can't play these
+				best_stream = stream
+				break
+		else:
+			lowest_rez = 99999999
+			for stream in audio_streams:
+				if stream['width'] is None:
+					continue
+				print(json.dumps(stream, sort_keys=True, indent=4))
+				rez = stream['width']*stream['height']
+				if rez < lowest_rez:
+					lowest_rez = rez
+					best_stream = stream
+		
+		print(json.dumps(best_stream, sort_keys=True, indent=4))
+		return {'title': title, 'length': length, 'url': best_stream['url']}
 
 def playtube_async(url, offset, asker, channelId, songId):
 	global tts_id
@@ -194,24 +219,16 @@ def playtube_async(url, offset, asker, channelId, songId):
 	# https://youtu.be/-zEJEdbZUP8 (crashes or doesn't play on yt-dlp)
 	
 	# https://www.olivieraubert.net/vlc/python-ctypes/doc/ (Ctrl+f MediaPlayer)
-	try:
-		playurl = ''
-		title = '???'
-		length = 0
-		if url in cached_video_urls:
-			print("Use cached url " + url)
-			playurl = cached_video_urls[url]['url']
-			title = cached_video_urls[url]['title']
-			length = cached_video_urls[url]['length']
-		else:
+	try:		
+		if url not in cached_video_urls:
 			print("Fetch best audio " + url)
-			video = pafy.new(url)
-			best = video.getbestaudio()
-			playurl = best.url
-			length = int(video.length)
-			title = video.title
-			cached_video_urls[url] = {'url': playurl, 'title': title, 'length': int(video.length)}
-			#print("BEST URL: " + playurl)
+			cached_video_urls[url] = load_info_from_url(url)
+		else:
+			print("Use cached url " + url)
+			
+		playurl = cached_video_urls[url]['url']
+		title = cached_video_urls[url]['title']
+		length = cached_video_urls[url]['length']
 		
 		pipePrefix = '\\\\.\\pipe\\' if os.name == 'nt' else ''		
 		pipePath = '%s%s' % (pipePrefix, pipeName)
@@ -244,12 +261,13 @@ def playtube_async(url, offset, asker, channelId, songId):
 	except Exception as e:
 		print(e)
 		
-		send_queue.put("fail:%s:%s" % (channelId, songId))
-		send_queue.put("failed to play a video from " + str(asker) + ".")
-		t = Thread(target = play_tts, args =('', str(e), tts_id, "en", 100, False, ))
-		t.daemon = True
-		t.start()
-		tts_id += 1
+		err_string = str(e).replace('\n','. ')
+		send_queue.put("fail:%s:%s:%s" % (channelId, songId, err_string))
+		
+		#t = Thread(target = play_tts, args =('\\radio_client\\', err_string, tts_id, 'en', 1, False, ))
+		#t.daemon = True
+		#t.start()
+		#tts_id += 1
 		
 	#pipe_mutex.acquire()
 	g_reserved_pipes.remove(pipeName)
@@ -281,8 +299,6 @@ def play_tts(speaker, text, id, lang, pitch, is_hidden):
 	totalCaps = sum(1 for c in text if c.isupper())
 	totalLower = sum(1 for c in text if c.islower())
 	volume = 1000 if totalCaps > totalLower else 2
-	
-	#steam_voice_cmd = 'play %s' % fname
 	
 	# stop their last speech, if any
 	if speaker in g_tts_players:
@@ -526,14 +542,10 @@ while True:
 	line = line[line.find("\\")+1:]
 	pitch = float(line[:line.find("\\")]) / 100
 	line = line[line.find("\\")+1:]
-	
-	had_prefix = line.startswith(command_prefix)
-	if had_prefix:
-		line = line[1:]
 
 	#print(name + ": " + line.strip())
 	
-	if line.startswith('https://www.youtube.com') or line.startswith('https://youtu.be'):				
+	if line.startswith('https://') or line.startswith('http://'):				
 		args = line.split()
 		offset = 0
 		channelId = 0
@@ -556,6 +568,10 @@ while True:
 		t.daemon = True
 		t.start()
 		continue
+	
+	had_prefix = line.startswith(command_prefix)
+	if had_prefix:
+		line = line[1:]
 	
 	if line.startswith('.info'):
 		channel = int(line.split()[1])
@@ -599,22 +615,6 @@ while True:
 	if line.startswith('.mstop'):
 		args = line.split()
 		arg = args[1] if len(args) > 1 else ""
-	
-		if arg == "":
-			for player in g_media_players:
-				player['player'].terminate()
-				steam_voice.stdin.write('stop ' + player['pipe'] + "\n")
-			g_media_players = []
-		elif arg == "last":
-			for player in g_media_players[1:]:
-				player['player'].terminate()
-				steam_voice.stdin.write('stop ' + player['pipe'] + "\n")
-			g_media_players = g_media_players[:1]
-		elif arg == "first":
-			for player in g_media_players[:-1]:
-				player['player'].terminate()
-				steam_voice.stdin.write('stop ' + player['pipe'] + "\n")
-			g_media_players = g_media_players[-1:]
 			
 		if arg == "" or arg == 'speak':
 			for key, fname in g_tts_players.items():

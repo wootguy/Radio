@@ -26,7 +26,7 @@ const float BUFFER_DELAY = 0.7f; // minimum time for a voice packet to reach pla
 
 // longer than this and python might overwrite what is currently being read
 // keep this in sync with server.py
-const float MAX_SAMPLE_LOAD_TIME = 0.1f; 
+const float MAX_SAMPLE_LOAD_TIME = 0.15f - file_check_interval;
 
 // convert lowercase hex letter to integer
 array<uint8> char_to_nibble = {
@@ -210,7 +210,16 @@ void handle_radio_message(string msg) {
 		int channel = atoi(parts[1]);
 		uint songId = atoi(parts[2]);
 		
-		g_channels[channel].cancelSong(songId);
+		string reason = "";
+		
+		for (uint i = 3; i < parts.size(); i++) {
+			if (i != 3) {
+				reason = reason + ":";
+			}
+			reason += parts[i];
+		}
+		
+		g_channels[channel].cancelSong(songId, reason);
 		
 		return;
 	}
@@ -226,7 +235,7 @@ void finish_sample_load() {
 	float loadTime = (g_EngineFuncs.Time() - sample_load_start) + file_check_interval + g_Engine.frametime;
 	
 	if (loadTime > MAX_SAMPLE_LOAD_TIME) {
-		g_PlayerFuncs.ClientPrintAll(HUD_PRINTCONSOLE, "[Radio] Server can't load samples fast enough (" + loadTime + " / " + MAX_SAMPLE_LOAD_TIME + ")\n");
+		g_PlayerFuncs.ClientPrintAll(HUD_PRINTCONSOLE, "[Radio] Server can't load packets fast enough (" + loadTime + " / " + MAX_SAMPLE_LOAD_TIME + ")\n");
 	}
 	
 	//println("Loaded samples from file in " + loadTime + " seconds");
@@ -393,7 +402,7 @@ void play_samples() {
 							sendMode = MSG_ONE_UNRELIABLE;
 						} else if (!state.startedReliablePackets) {
 							state.startedReliablePackets = true;
-							g_PlayerFuncs.ClientPrint(plr, HUD_PRINTNOTIFY, "[Radio] Reliable packets started.");
+							g_PlayerFuncs.ClientPrint(plr, HUD_PRINTNOTIFY, "[Radio] Reliable packets started.\n");
 						}
 					}
 					
