@@ -223,6 +223,16 @@ void handle_radio_message(string msg) {
 		
 		return;
 	}
+	
+	if (msg.Find("finish:") == 0) {
+		array<string> parts = msg.Split(":");
+		int channel = atoi(parts[1]);
+		uint songId = atoi(parts[2]);
+		
+		g_channels[channel].finishSong(songId);
+		
+		return;
+	}
 
 	bool chatNotNotify = msg[0] != '~';
 	if (!chatNotNotify) {

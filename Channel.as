@@ -128,6 +128,11 @@ class Channel {
 			int timePassed = song.getTimePassed() + (song.offset/1000);
 			int songLength = (song.lengthMillis + 999) / 1000;
 			string timeStr = "(" + formatTime(timePassed) + " / " + formatTime(songLength) + ")";
+			
+			if (song.lengthMillis == uint(-1*1000)) {
+				timeStr = "(" + formatTime(timePassed) + ")";
+			}
+			
 			string timeleft = song.loadState == SONG_LOADED ? timeStr : "(--:-- / --:--)";
 			songStr += song.getClippedName(96, true) + "  " + timeleft;
 		}
@@ -177,6 +182,12 @@ class Channel {
 					if (song.loadState != SONG_LOADED) {
 						RelaySay(name + "|" + song.getName(false) + "|" + (getDj() !is null ? string(getDj().pev.netname) : "(none)"));
 						advertise("Now playing: " + song.getName(false));
+						
+						g_EngineFuncs.ServerPrint("[Radio] " + song.getName(false) + "\n");
+						g_Game.AlertMessage(at_logged, "[Radio] " + song.getName(false) + "\n");
+						
+						g_EngineFuncs.ServerPrint("[Radio] " + song.path + "\n");
+						g_Game.AlertMessage(at_logged, "[Radio] " + song.path + "\n");
 					}
 					
 					song.loadState = SONG_LOADED;
@@ -308,6 +319,16 @@ class Channel {
 			g_Log.PrintF(reason + "\n");
 		} else {
 			println("Failed to cancel song with id " + songId);
+		}
+	}
+	
+	void finishSong(uint songId) {
+		Song@ song = findSongById(songId);
+		
+		if (song !is null) {
+			song.loadState = SONG_FINISHED;
+		} else {
+			println("Failed to finish song with id " + songId);
 		}
 	}
 	

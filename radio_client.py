@@ -181,8 +181,10 @@ def load_info_from_url(url):
 		print(json.dumps(ydl_info, sort_keys=True, indent=4))
 		
 		title = ydl_info['title']
-		length = ydl_info['duration']
-		audio_streams = [i for i in ydl_info['formats'] if i.get('acodec', 'none') != 'none' or i.get('vcodec', 'none') == 'none']
+		length = ydl_info['duration'] if 'duration' in ydl_info else -1
+		formats = ydl_info['formats'] if 'formats' in ydl_info else ydl_info['entries'][0]['formats']
+		
+		audio_streams = [i for i in formats if i.get('acodec', 'none') != 'none' or i.get('vcodec', 'none') == 'none']
 		audio_only_streams = [i for i in audio_streams if i.get('vcodec', 'none') == 'none']
 		
 		best_stream = None
@@ -192,7 +194,7 @@ def load_info_from_url(url):
 					continue # ffmpeg can't play these
 				best_stream = stream
 				break
-		else:
+		elif len(audio_streams):
 			lowest_rez = 99999999
 			for stream in audio_streams:
 				if stream['width'] is None:
@@ -202,6 +204,8 @@ def load_info_from_url(url):
 				if rez < lowest_rez:
 					lowest_rez = rez
 					best_stream = stream
+		elif len(formats):
+			best_stream = formats[0]
 		
 		if type(title) == list:
 			title = title[-1]
@@ -518,10 +522,11 @@ while True:
 				if player['url'] in cached_video_urls:
 					del cached_video_urls[player['url']]
 				continue
+				
 			
 			playTime = time.time() - player['start_time']
 			expectedPlayTime = player['length'] - player['offset']
-			if playTime < expectedPlayTime - 10:
+			if playTime < expectedPlayTime - 10 and player['length'] != -1:
 				send_queue.put("~Video playback failed at %s. Attempting to resume." % format_time(playTime + player['offset']))
 				t = Thread(target = playtube_async, args =(player['url'], player['offset'] + int(playTime + 1.5), player['asker'], player['channelId'], player['songId'], ))
 				t.daemon = True
@@ -531,6 +536,7 @@ while True:
 				continue
 			
 			print("Finished playing video (%.1f left)" % (expectedPlayTime - playTime))
+			send_queue.put("finish:%s:%s" % (player['channelId'], player['songId']))
 			break
 	
 	line = None

@@ -33,8 +33,9 @@
 // https://www.youtube.com/shorts/U4WTB8-ssRM (pafy doesn't find right link)
 // https://www.youtube.com/watch?v=5-uBerhQvTc (video unavailable)
 // https://youtu.be/5-uBerhQvTc (video unavailable)
-// https://archive.org/details/your-cum-wont-last-official-music-video-7-do-70nzt-rne
+// https://archive.org/details/your-cum-wont-last-official-music-video-7-do-70nzt-rne (download url has special chars)
 // https://soundcloud.com/felix-adjapong/e-40-choices-yup-instrumental-prod-by-poly-boy
+// https://kippykip.com/data/video/0/634-7d3e1a675391cfabca5710e6af52a386.mov (generic backend + no duration info)
 
 const string SONG_FILE_PATH = "scripts/plugins/Radio/songs.txt";
 const string MUSIC_PACK_PATH = "scripts/plugins/Radio/music_packs.txt";
@@ -154,7 +155,8 @@ enum SONG_LOAD_STATES {
 	SONG_UNLOADED,
 	SONG_LOADING,
 	SONG_LOADED,
-	SONG_FAILED
+	SONG_FAILED,
+	SONG_FINISHED // needed for videos that have no duration info
 };
 
 class Song {
@@ -224,7 +226,7 @@ class Song {
 	}
 	
 	bool isFinished() {
-		return loadState == SONG_FAILED or (loadState == SONG_LOADED and getTimeLeft() <= 0);
+		return loadState == SONG_FAILED or (loadState == SONG_LOADED and getTimeLeft() <= 0) or loadState == SONG_FINISHED;
 	}
 }
 
