@@ -3,7 +3,7 @@
 # youtube shorts links dont work
 # delete tts mp3s after finished
 
-import time, os, sys, queue, random, datetime, socket, subprocess, traceback, json
+import time, os, sys, queue, random, datetime, socket, subprocess, traceback, json, pafy, urllib
 from threading import Thread, Lock
 from gtts import gTTS
 
@@ -169,8 +169,16 @@ def get_youtube_info(url, channel, songId):
 		send_queue.put("~Failed load video info for: " + url)
 
 def load_info_from_url(url):
+	if ('youtube.com' in url or 'youtu.be' in url) and '/shorts/' not in url:
+		print("Using pafy for normal youtube link")
+		# don't know why but seems like the urls pafy picks don't have lots of failures lilke when using ytdl directly
+		video = pafy.new(url)
+		return {'url': video.getbestaudio().url, 'title': video.title, 'length': video.length}
+
 	with youtube_dl.YoutubeDL() as ydl:
 		ydl_info = ydl.extract_info(url, download=False)
+		
+		print(json.dumps(ydl_info, sort_keys=True, indent=4))
 		
 		title = ydl_info['title']
 		length = ydl_info['duration']
@@ -195,6 +203,9 @@ def load_info_from_url(url):
 					lowest_rez = rez
 					best_stream = stream
 		
+		if type(title) == list:
+			title = title[-1]
+		
 		print(json.dumps(best_stream, sort_keys=True, indent=4))
 		return {'title': title, 'length': length, 'url': best_stream['url']}
 
@@ -215,10 +226,6 @@ def playtube_async(url, offset, asker, channelId, songId):
 	g_reserved_pipes.add(pipeName)
 	#pipe_mutex.release()
 	
-	# https://youtu.be/GXv1hDICJK0 (age restricted)
-	# https://youtu.be/-zEJEdbZUP8 (crashes or doesn't play on yt-dlp)
-	
-	# https://www.olivieraubert.net/vlc/python-ctypes/doc/ (Ctrl+f MediaPlayer)
 	try:		
 		if url not in cached_video_urls:
 			print("Fetch best audio " + url)
@@ -236,10 +243,11 @@ def playtube_async(url, offset, asker, channelId, songId):
 		
 		#if not os.name == 'nt':
 		#	playurl = "'" + playurl + "'"
+		safe_url = playurl.replace(" ", "%20").replace("'", '%27')
 		
 		loudnorm_filter = '-af loudnorm=I=-22:LRA=11:TP=-1.5' # uses too much memory
-		cmd = 'ffmpeg -hide_banner -loglevel error -y -ss %s -i %s -f s16le -ar 12000 -ac 1 -' % (offset, playurl)
-		#print(cmd)
+		cmd = 'ffmpeg -hide_banner -loglevel error -y -ss %s -i %s -f s16le -ar 12000 -ac 1 -' % (offset, safe_url)
+		print(cmd)
 		pipefile = open(pipePath, 'w')
 		ffmpeg = subprocess.Popen(cmd.split(' '), stdout=pipefile)
 		steam_voice.stdin.write("assign %s %d\n" % (pipeName, channelId))
@@ -257,9 +265,9 @@ def playtube_async(url, offset, asker, channelId, songId):
 			'channelId': channelId,
 			'songId': songId
 		})
-		print("Play offset %d: " % offset + title)
+		print("Play offset %d: " % offset)
 	except Exception as e:
-		print(e)
+		traceback.print_exc()
 		
 		err_string = str(e).replace('\n','. ')
 		send_queue.put("fail:%s:%s:%s" % (channelId, songId, err_string))
@@ -595,6 +603,10 @@ while True:
 		
 	if line.startswith('.resume_packets'):
 		g_pause_packets = False
+		continue
+		
+	if line.startswith('.clear_cache'):
+		cached_video_urls = {}
 		continue
 	
 	if line.startswith('.stopid'):
