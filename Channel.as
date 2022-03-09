@@ -173,11 +173,14 @@ class Channel {
 			
 				if (song !is null) {
 					println("packet " + packetId + " triggered start of song " + packetListeners[i].songId);
+					
+					if (song.loadState != SONG_LOADED) {
+						RelaySay(name + "|" + song.getName(false) + "|" + (getDj() !is null ? string(getDj().pev.netname) : "(none)"));
+						advertise("Now playing: " + song.getName(false));
+					}
+					
 					song.loadState = SONG_LOADED;
 					song.startTime = DateTime();
-					RelaySay(name + "|" + song.getName(false) + "|" + (getDj() !is null ? string(getDj().pev.netname) : "(none)"));
-					advertise("Now playing: " + song.getName(false));
-					
 					
 					int packetDiff = packetId - packetListeners[i].packetId;
 					if (packetDiff > 0) {
@@ -299,8 +302,10 @@ class Channel {
 		
 		if (song !is null) {
 			song.loadState = SONG_FAILED;
-			announce("Failed to play: " + song.path);
-			announce(reason);
+			announce("Failed to play: " + song.path + "\n");
+			announce(reason + "\n");
+			g_Log.PrintF("Failed to play: " + song.path + "\n");
+			g_Log.PrintF(reason + "\n");
 		} else {
 			println("Failed to cancel song with id " + songId);
 		}

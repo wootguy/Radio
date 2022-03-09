@@ -17,10 +17,24 @@
 // - read volume level from ambient_music when scripts are able to read it from the bsp
 // - set voice ent to DJ or requester if server is full, instead of player 0
 // - option to block requests from specific player
-// - remove buffer for less delay
-// - shorts urls don't work: https://www.youtube.com/shorts/U4WTB8-ssRM
 // - console commands for stopping vids + speech
 // .mstop still works, make commands for them instead
+// - delete cached link info after a while
+// - don't show relay message for restarted video
+// - try restart video at .5 offset
+// - tts "no text to speak"
+// - radio offline/online message shouldnt show when packets are paused
+// Failed to play a video from radio is global
+// - dont stopsound if voice idx is still null, maybe start from 32 and go backwards
+
+// test links:
+// https://youtu.be/GXv1hDICJK0 (age restricted)
+// https://youtu.be/-zEJEdbZUP8 (crashes or doesn't play on yt-dlp)
+// https://www.youtube.com/shorts/U4WTB8-ssRM (pafy doesn't find right link)
+// https://www.youtube.com/watch?v=5-uBerhQvTc (video unavailable)
+// https://youtu.be/5-uBerhQvTc (video unavailable)
+// https://archive.org/details/your-cum-wont-last-official-music-video-7-do-70nzt-rne
+// https://soundcloud.com/felix-adjapong/e-40-choices-yup-instrumental-prod-by-poly-boy
 
 const string SONG_FILE_PATH = "scripts/plugins/Radio/songs.txt";
 const string MUSIC_PACK_PATH = "scripts/plugins/Radio/music_packs.txt";
