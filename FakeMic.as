@@ -19,6 +19,8 @@ int g_packet_idx = 0;
 uint16 expectedNextPacketId = 0;
 float g_packet_delay = 0.05f;
 
+bool g_admin_pause_packets = false;
+
 array<VoicePacket> g_voice_data_stream;
 
 string voice_server_file = "scripts/plugins/store/_tovoice.txt";
@@ -74,7 +76,7 @@ void load_samples() {
 		return;
 	}
 	
-	if (!g_any_radio_listeners) {
+	if (!g_any_radio_listeners || g_admin_pause_packets) {
 		g_next_load_samples = g_EngineFuncs.Time() + 1.0f;
 		return;
 	}

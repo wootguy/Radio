@@ -518,7 +518,7 @@ while True:
 			
 			if not player['message_sent']:
 				send_queue.put("fail:%s:%s" % (player['channelId'], player['songId']))
-				send_queue.put("Failed to play a video from %s" % player['asker'])
+				send_queue.put("Failed to play: %s" % player['url'])
 				if player['url'] in cached_video_urls:
 					del cached_video_urls[player['url']]
 				continue
@@ -629,18 +629,25 @@ while True:
 				print("Song %d was stopped" % player['songId'])
 
 		continue
-		
-	if line.startswith('.mstop'):
-		args = line.split()
-		arg = args[1] if len(args) > 1 else ""
-			
-		if arg == "" or arg == 'speak':
-			for key, fname in g_tts_players.items():
-				steam_voice.stdin.write('stop ' + fname + "\n")
-			g_tts_players = {}
-		
 	
-		t = Thread(target = play_tts, args =(name, 'stop ' + arg, tts_id, lang, pitch, False, ))
+	if line.startswith('.radio stop global'):
+		for idx, player in enumerate(g_media_players):
+			player['player'].terminate()
+			player['was_stopped'] = True
+		g_media_players = []
+	
+		t = Thread(target = play_tts, args =(name, 'stop everything', tts_id, lang, pitch, False, ))
+		t.daemon = True
+		t.start()
+		tts_id += 1
+		continue
+	
+	if line.startswith('.radio stop speak'):
+		for key, fname in g_tts_players.items():
+			steam_voice.stdin.write('stop ' + fname + "\n")
+		g_tts_players = {}
+	
+		t = Thread(target = play_tts, args =(name, 'stop speak', tts_id, lang, pitch, False, ))
 		t.daemon = True
 		t.start()
 		tts_id += 1

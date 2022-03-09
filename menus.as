@@ -107,6 +107,7 @@ void callbackMenuRadio(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const 
 		else {
 			chan.currentDj = getPlayerUniqueId(plr);
 			state.requestsAllowed = true;
+			chan.emptyTime = g_EngineFuncs.Time(); // prevent immediate ejection
 			chan.announce("" + plr.pev.netname + " is now the DJ!");
 		}
 		state.lastDjToggle = g_Engine.time;
@@ -317,32 +318,6 @@ void callbackMenuStopVideo(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, co
 	}
 	
 	if (option.Find("stop-") == 0) {
-		if (!canDj) {
-			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] Only the DJ can stop videos.\n");
-			g_Scheduler.SetTimeout("openMenuStopVideo", 0.0f, EHandle(plr));
-			return;
-		}
-			
-		if (state.shouldSongSkipCooldown(plr)) {
-			g_Scheduler.SetTimeout("openMenuStopVideo", 0.0f, EHandle(plr));
-			return;
-		}
-		
-		if (chan.activeSongs.size() == 0) {
-			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] No videos are playing.\n");
-			g_Scheduler.SetTimeout("openMenuStopVideo", 0.0f, EHandle(plr));
-			return;
-		}
-		
-		if (option.Find("stop-last") == 0 || option.Find("stop-first") == 0) {
-			if (chan.activeSongs.size() < 2) {
-				g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] Only one video is playing.\n");
-				g_Scheduler.SetTimeout("openMenuStopVideo", 0.0f, EHandle(plr));
-				return;
-			}
-		}
-		
-		state.lastSongSkip = g_Engine.time;
 		g_Scheduler.SetTimeout("openMenuStopVideo", 0.0f, EHandle(plr));
 		
 		if (option.Find("stop-all") == 0) {		
