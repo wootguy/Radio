@@ -64,6 +64,16 @@ class Channel {
 			}
 		}
 		
+		CBasePlayer@ dj = getDj();
+		if (dj !is null) {
+			if (g_EngineFuncs.Time() - emptyTime > g_djIdleTime.GetInt()) {
+				announce("DJ " + dj.pev.netname + " was ejected for inactivity.\n");
+				PlayerState@ djState = getPlayerState(dj);
+				djState.lastDjToggle = g_Engine.time + 10; // give someone else a chance to DJ
+				currentDj = "";
+			}
+		}
+		
 		if (areSongsFinished()) {			
 			if (queue.size() > 0) {				
 				Song song = queue[0];
@@ -314,9 +324,12 @@ class Channel {
 		if (song !is null) {
 			song.loadState = SONG_FAILED;
 			announce("Failed to play: " + song.path + "\n");
-			announce(reason + "\n");
 			g_Log.PrintF("Failed to play: " + song.path + "\n");
-			g_Log.PrintF(reason + "\n");
+			
+			if (reason.Length() > 0) {
+				announce(reason + "\n");
+				g_Log.PrintF(reason + "\n");
+			}
 		} else {
 			println("Failed to cancel song with id " + songId);
 		}
@@ -333,6 +346,26 @@ class Channel {
 	}
 	
 	void stopMusic(CBasePlayer@ skipper, int excludeIdx, bool clearQueue) {
+		if (skipper !is null) {
+			PlayerState@ state = getPlayerState(skipper);
+			
+			if (!canDj(skipper)) {
+				g_PlayerFuncs.ClientPrint(skipper, HUD_PRINTTALK, "[Radio] Only the DJ can stop videos.\n");
+				return;
+			}
+			
+			if (state.shouldSongSkipCooldown(skipper)) {
+				return;
+			}
+			
+			if (activeSongs.size() == 0) {
+				g_PlayerFuncs.ClientPrint(skipper, HUD_PRINTTALK, "[Radio] No videos are playing.\n");
+				return;
+			}
+			
+			state.lastSongSkip = g_Engine.time;
+		}
+	
 		string cmd = "Radio\\en\\100\\.stopid";
 		
 		int numStopped = activeSongs.size();
@@ -359,7 +392,12 @@ class Channel {
 				} else {
 					msg = "Stopped all but the " + firstLast + " video.";
 				}
-				announce(msg);
+				
+				if (numStopped == 0) {
+					g_PlayerFuncs.ClientPrint(skipper, HUD_PRINTTALK, "Only one video is playing.");
+				} else {
+					announce(msg);
+				}
 			} else {
 				string plural = numStopped > 1 ? "Videos" : "Video";
 				string action = queue.size() > 0 ? "skipped" : "stopped";
