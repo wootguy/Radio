@@ -149,7 +149,11 @@ void callbackMenuChannelSelect(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber
 
 	if (option.Find(chanPrefix) == 0) {
 		int oldChannel = state.channel;
-		state.channel = atoi(option.SubString(chanPrefix.Length()));
+		state.channel = atoi(option.SubString(chanPrefix.Length(), option.Find(":")));
+		
+		if (int(option.Find(":invited")) != -1) {
+			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] This menu is opened by saying .radio\n");
+		}
 		
 		g_Scheduler.SetTimeout("openMenuRadio", 0.0f, EHandle(plr));
 		
@@ -602,7 +606,7 @@ void openMenuInviteRequest(EHandle h_plr, string asker, int channel) {
 	@g_menus[eidx] = CTextMenu(@callbackMenuChannelSelect);
 	g_menus[eidx].SetTitle("\\yYou're invited to listen to\nthe radio on " + g_channels[channel].name + "\n-" + asker + "\n");
 	
-	g_menus[eidx].AddItem("\\wAccept\\y", any("channel-" + channel));
+	g_menus[eidx].AddItem("\\wAccept\\y", any("channel-" + channel + ":invited"));
 	g_menus[eidx].AddItem("\\wIgnore\\y", any("exit"));
 	
 	string label = "\\wBlock invites\\y";

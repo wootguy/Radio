@@ -9,7 +9,6 @@
 
 // TODO:
 // - show who else is listening with music sprites or smth
-// - let dj rename channel
 // - invite cooldowns should use datetime
 // - read volume level from ambient_music when scripts are able to read it from the bsp
 // - set voice ent to DJ or requester if server is full, instead of player 0
@@ -18,6 +17,7 @@
 // - radio offline/online message shouldnt show when packets are paused
 // - Failed to play a video error is global
 // - warning message for dj ejection
+// - player becomes null now maybe because id update changes
 
 // test links:
 // https://youtu.be/GXv1hDICJK0 (age restricted)
@@ -28,6 +28,7 @@
 // https://archive.org/details/your-cum-wont-last-official-music-video-7-do-70nzt-rne (download url has special chars)
 // https://soundcloud.com/felix-adjapong/e-40-choices-yup-instrumental-prod-by-poly-boy
 // https://kippykip.com/data/video/0/634-7d3e1a675391cfabca5710e6af52a386.mov (generic backend + no duration info)
+// https://www.youtube.com/watch?v=fUgzv-8_EMc (live stream)
 
 const string SONG_FILE_PATH = "scripts/plugins/Radio/songs.txt";
 const string MUSIC_PACK_PATH = "scripts/plugins/Radio/music_packs.txt";
@@ -219,7 +220,7 @@ class Song {
 	}
 	
 	bool isFinished() {
-		return loadState == SONG_FAILED or (loadState == SONG_LOADED and getTimeLeft() <= 0) or loadState == SONG_FINISHED;
+		return loadState == SONG_FAILED or (loadState == SONG_LOADED and getTimeLeft() <= 0 and lengthMillis != 0) or loadState == SONG_FINISHED;
 	}
 }
 
@@ -245,7 +246,7 @@ void PluginInit() {
 	@g_djSwapCooldown = CCVar("djSwapCooldown", 5, "DJ mode toggle cooldown", ConCommandFlag::AdminOnly);
 	@g_skipSongCooldown = CCVar("skipSongCooldown", 10, "Audio stop cooldown", ConCommandFlag::AdminOnly);
 	@g_djReserveTime = CCVar("djReserveTime", 240, "Time to reserve DJ slots after level change", ConCommandFlag::AdminOnly);
-	@g_djIdleTime = CCVar("djIdleTime", 300, "Time a DJ can be idle before being ejected", ConCommandFlag::AdminOnly);
+	@g_djIdleTime = CCVar("djIdleTime", 180, "Time a DJ can be idle before being ejected", ConCommandFlag::AdminOnly);
 	@g_maxQueue = CCVar("maxQueue", 8, "Max songs that can be queued", ConCommandFlag::AdminOnly);
 	@g_channelCount = CCVar("channelCount", 3, "Number of available channels", ConCommandFlag::AdminOnly);
 	
@@ -615,31 +616,32 @@ void showConsoleHelp(CBasePlayer@ plr, bool showChatMessage) {
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    say !https://www.youtube.com/watch?v=b8HO6hba9ZE\n\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'To play a video at a specific time, add a timecode after the link. Example:\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    say !https://www.youtube.com/watch?v=b8HO6hba9ZE 0:27\n\n');
-	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Is audio stuttering?\n');
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Is the audio stuttering?\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    Try typing "stopsound" in console. Voice playback often breaks after viewing a map cutscene.\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    If that doesn\'t help, then check if you have any "loss" shown with "net_graph 4". If you do\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    then use the ".radio reliable" command to send voice data on the reliable channel. This should\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    fix the audio cutting out but may cause desyncs or "reliable channel overflow".\n\n');
-	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Is audio too loud/quiet?\n');
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Is the audio too loud/quiet?\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    You can adjust voice volume with "voice_scale" in console. Type stopsound to apply your change.\n\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Commands:\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    .radio                    open the radio menu.\n');
-	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    .radio list               show who\'s listening.\n');
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    .radio block/unblock      block/unblock radio invites/requests.\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    .radio lang x             set your text-to-speech language.\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    .radio langs              list valid text-to-speech languages.\n');
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    .radio list               show who\'s listening.\n');
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    .radio name <new_name>    rename the channel.\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    .radio pitch <10-200>     set your text-to-speech pitch.\n');
-	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    .radio block/unblock      block/unblock radio invites/requests.\n');
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    .radio reliable           use the reliable channel to receive audio.\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    .radio stop               stop currently playing videos.\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    .radio stop first         stop all but the last video.\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    .radio stop last          stop all but the first video.\n');
-	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    .radio stop speak         stop currently playing speech.\n');
-	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    .radio reliable           use the reliable channel to receive audio.\n');
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    .radio stop speak         stop currently playing speech.\n');	
 	
 	if (isAdmin) {
 		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '\nAdmin commands:\n');
-		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    .radio stop global        stop currently playing speech and videos in all channels.\n');
-		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    .radio pause/resume       stop/continue processing audio packets.\n');
 		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    .radio encoder <bitrate>  set opus encoder bitrate (default is 32000 bps).\n');
+		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    .radio pause/resume       stop/continue processing audio packets.\n');
+		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    .radio stop global        stop currently playing speech and videos in all channels.\n');
 	}
 	
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '\n------------------------------------------------------------------------\n');
@@ -743,6 +745,19 @@ bool doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 				}
 				send_voice_server_message("Radio\\en\\100\\.radio stop global");
 			}
+			
+			return true;
+		}
+		else if (args.ArgC() > 2 and args[1] == "name") {
+			string newName = args[2];
+			
+			if (state.channel == -1) {
+				g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] You must be in a radio channel to use this command.\n");
+				return true;
+			}
+			
+			Channel@ chan = @g_channels[state.channel];
+			chan.rename(plr, newName);
 			
 			return true;
 		}

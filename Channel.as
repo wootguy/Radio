@@ -25,7 +25,7 @@ class Channel {
 	array<PacketListener> packetListeners;
 	array<VoicePacket> packetStream;
 	
-	void think() {		
+	void think() {
 		for (uint i = 0; i < activeSongs.size(); i++) {
 			if (activeSongs[i].isFinished()) {
 				activeSongs.removeAt(i);
@@ -64,16 +64,6 @@ class Channel {
 			}
 		}
 		
-		CBasePlayer@ dj = getDj();
-		if (dj !is null) {
-			if (g_EngineFuncs.Time() - emptyTime > g_djIdleTime.GetInt()) {
-				announce("DJ " + dj.pev.netname + " was ejected for inactivity.\n");
-				PlayerState@ djState = getPlayerState(dj);
-				djState.lastDjToggle = g_Engine.time + 10; // give someone else a chance to DJ
-				currentDj = "";
-			}
-		}
-		
 		if (areSongsFinished()) {			
 			if (queue.size() > 0) {				
 				Song song = queue[0];
@@ -93,6 +83,33 @@ class Channel {
 		} else {
 			wasEmpty = false;
 		}
+		
+		CBasePlayer@ dj = getDj();
+		if (dj !is null) {
+			if (wasEmpty and g_EngineFuncs.Time() - emptyTime > g_djIdleTime.GetInt()) {
+				announce("DJ " + dj.pev.netname + " was ejected for inactivity.\n");
+				PlayerState@ djState = getPlayerState(dj);
+				djState.lastDjToggle = g_Engine.time + 10; // give someone else a chance to DJ
+				currentDj = "";
+			}
+		}
+	}
+	
+	void rename(CBasePlayer@ namer, string newName) {
+		const int maxLength = 48;
+		
+		if (!canDj(namer)) {
+			g_PlayerFuncs.ClientPrint(namer, HUD_PRINTTALK, "[Radio] Only the DJ can rename this channel.\n");
+			return;
+		}
+		
+		if (newName.Length() > maxLength) {
+			g_PlayerFuncs.ClientPrint(namer, HUD_PRINTTALK, "[Radio] Channel name must be " + maxLength + " characters or less.\n");
+			return;
+		}
+		
+		announce("" + namer.pev.netname + " renamed the channel to \"" + newName + "\"");
+		name = newName;
 	}
 	
 	void updateHud(CBasePlayer@ plr, PlayerState@ state) {
@@ -139,7 +156,7 @@ class Channel {
 			int songLength = (song.lengthMillis + 999) / 1000;
 			string timeStr = "(" + formatTime(timePassed) + " / " + formatTime(songLength) + ")";
 			
-			if (song.lengthMillis == uint(-1*1000)) {
+			if (song.lengthMillis == uint(-1*1000) or song.lengthMillis == 0) {
 				timeStr = "(" + formatTime(timePassed) + ")";
 			}
 			
