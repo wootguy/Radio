@@ -173,7 +173,15 @@ def load_info_from_url(url):
 		print("Using pafy for normal youtube link")
 		# don't know why but seems like the urls pafy picks don't have lots of failures lilke when using ytdl directly
 		video = pafy.new(url)
-		return {'url': video.getbestaudio().url, 'title': video.title, 'length': video.length}
+		bestaudio = video.getbestaudio()
+		
+		url = None
+		if bestaudio:
+			url = bestaudio.url
+		else:
+			url = video.getbest().url
+		
+		return {'url': url, 'title': video.title, 'length': video.length}
 
 	with youtube_dl.YoutubeDL() as ydl:
 		ydl_info = ydl.extract_info(url, download=False)
