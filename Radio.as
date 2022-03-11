@@ -18,6 +18,7 @@
 // - Failed to play a video error is global
 // - warning message for dj ejection
 // - player becomes null now maybe because id update changes
+// - failed to play message happens twice
 
 // test links:
 // https://youtu.be/GXv1hDICJK0 (age restricted)
@@ -255,11 +256,11 @@ void PluginInit() {
 	for (uint i = 0; i < g_channels.size(); i++) {
 		g_channels[i].name = "Channel " + (i+1);
 		g_channels[i].id = i;
-		g_channels[i].maxStreams = 4;
+		g_channels[i].maxStreams = 3;
 		
 		if (i == 0) {
 			g_channels[i].spamMode = true;
-			g_channels[i].maxStreams = 8;
+			g_channels[i].maxStreams = 6;
 		}
 	}
 	
