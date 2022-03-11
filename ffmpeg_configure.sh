@@ -24,7 +24,7 @@
   --enable-libvorbis \
   --enable-filter=aresample \
   --enable-muxer=pcm_s16le \
-  --enable-demuxer=aac,mp3,ogg,mpegaudio,webm_dash_manifest,flv,mov,hls \
+  --enable-demuxer=aac,mp3,ogg,mpegaudio,webm_dash_manifest,flv,mov,hls,wtv \
   --enable-decoder=aac,vorbis,mp3,opus \
   --enable-parser=aac,vorbis,opus \
   --enable-encoder=pcm_s16le \

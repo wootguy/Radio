@@ -37,7 +37,7 @@ g_pause_packets = False
 
 server_timeout = 5 # time in seconds to wait for server heartbeat before disconnecting
 resend_packets = 0 # send packets X extra times to help prevent lost packets while keeping latency down
-g_pipe_count = 16 # should be in sync with steam_voice program
+g_pipe_count = 12 # should be in sync with steam_voice program
 g_reserved_pipes = set([]) # pipes that are probably about to be written to by ffmpeg
 pipe_mutex = Lock()
 
