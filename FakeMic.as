@@ -50,6 +50,7 @@ array<uint8> char_to_nibble = {
 	0, 0, 0, 0, 0, 0, 0, 0,
 	0, 10, 11, 12, 13, 14, 15
 };
+const uint NIBBLE_MAX = char_to_nibble.size();
 
 // using postThink hook instead of g_Scheduler so that music keeps playing during game_end screen
 float g_next_load_samples = 0;
@@ -301,9 +302,20 @@ void load_packets_from_file() {
 		handle_radio_message(line.SubString(1));
 	} else if (line[0] == 'z') {
 		// random data to change the size of the file
-	} else {
-		uint16 packetId = (char_to_nibble[ uint(line[0]) ] << 12) + (char_to_nibble[ uint(line[1]) ] << 8) +
-						  (char_to_nibble[ uint(line[2]) ] << 4) + (char_to_nibble[ uint(line[3]) ] << 0);
+	} else if (line.Length() > 4) {
+		uint nib0 = uint(line[0]);
+		uint nib1 = uint(line[1]);
+		uint nib2 = uint(line[2]);
+		uint nib3 = uint(line[3]);
+		
+		if (nib0 >= NIBBLE_MAX or nib0 >= NIBBLE_MAX or nib0 >= NIBBLE_MAX or nib0 >= NIBBLE_MAX) {
+			g_Log.PrintF("[FakeMic] Bad packet line: " + line + "\n");
+			finish_sample_load();
+			return;
+		}
+	
+		uint16 packetId = (char_to_nibble[nib0] << 12) + (char_to_nibble[nib1] << 8) +
+						  (char_to_nibble[nib2] << 4) + (char_to_nibble[nib3] << 0);
 		
 		if (packetId != expectedNextPacketId) {
 			//g_PlayerFuncs.ClientPrintAll(HUD_PRINTCONSOLE, "[Radio] Expected packet " + expectedNextPacketId + " but got " + packetId + "\n");
@@ -322,7 +334,8 @@ void load_packets_from_file() {
 		array<string> parts = line.Split(":"); // packet_id : channel_1_packet : channel_2_packet : ...
 		
 		if (parts.size()-1 != g_channels.size()+1) {
-			println("Packet streams != channel count + 1 (" + (parts.size()-1) + " " + g_channels.size() + "): " + line);			
+			println("Packet streams != channel count + 1 (" + (parts.size()-1) + " " + g_channels.size() + "): " + line);	
+			g_Log.PrintF("[FakeMic] Bad packet stream count: " + line + "\n");
 			finish_sample_load();
 			return; // don't let packet buffer sizes get out of sync between channels
 		}
