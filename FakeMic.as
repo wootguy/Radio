@@ -308,7 +308,7 @@ void load_packets_from_file() {
 		uint nib2 = uint(line[2]);
 		uint nib3 = uint(line[3]);
 		
-		if (nib0 >= NIBBLE_MAX or nib0 >= NIBBLE_MAX or nib0 >= NIBBLE_MAX or nib0 >= NIBBLE_MAX) {
+		if (nib0 >= NIBBLE_MAX or nib1 >= NIBBLE_MAX or nib2 >= NIBBLE_MAX or nib3 >= NIBBLE_MAX) {
 			g_Log.PrintF("[FakeMic] Bad packet line: " + line + "\n");
 			finish_sample_load();
 			return;
