@@ -3,9 +3,12 @@
 # youtube shorts links dont work
 # delete tts mp3s after finished
 
-import time, os, sys, queue, random, datetime, socket, subprocess, traceback, json, pafy, urllib
+import time, os, sys, queue, random, datetime, socket, subprocess, traceback, json, pafy, urllib, tracemalloc
 from threading import Thread, Lock
 from gtts import gTTS
+
+tracemalloc.start()
+g_mem_snapshot = tracemalloc.take_snapshot()
 
 #import youtube_dl
 import yt_dlp as youtube_dl
@@ -526,11 +529,9 @@ while True:
 			
 			if not player['message_sent']:
 				send_queue.put("fail:%s:%s" % (player['channelId'], player['songId']))
-				send_queue.put("Failed to play: %s" % player['url'])
 				if player['url'] in cached_video_urls:
 					del cached_video_urls[player['url']]
 				continue
-				
 			
 			playTime = time.time() - player['start_time']
 			expectedPlayTime = player['length'] - player['offset']
@@ -621,6 +622,19 @@ while True:
 		
 	if line.startswith('.clear_cache'):
 		cached_video_urls = {}
+		print("Cleared cached video data")
+		continue
+		
+	if line.startswith('.mem_debug'):
+		top_stats = tracemalloc.take_snapshot().compare_to(g_mem_snapshot, 'lineno')
+
+		print("[ top mem snapshot differences ]")
+		for stat in top_stats[:10]:
+			print('-'*80)
+			print(stat)
+			for line in stat.traceback.format():
+				print(line)		
+		
 		continue
 	
 	if line.startswith('.stopid'):
