@@ -60,3 +60,46 @@ vector<string> splitString(string str, const char* delimitters)
 long long getTimeMillis() {
 	return duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
 }
+
+bool fileExists(const std::string& name) {
+	if (FILE* file = fopen(name.c_str(), "r")) {
+		fclose(file);
+		return true;
+	}
+	else {
+		return false;
+	}
+}
+
+int resamplePcm(int16_t* pcm_old, int16_t* pcm_new, int oldRate, int newRate, int numSamples) {
+	float samplesPerStep = (float)oldRate / newRate;
+	int numSamplesNew = (float)numSamples / samplesPerStep;
+	float t = 0;
+
+	for (int i = 0; i < numSamplesNew; i++) {
+		int newIdx = t;
+		pcm_new[i] = pcm_old[newIdx];
+		t += samplesPerStep;
+	}
+
+	return numSamplesNew;
+}
+
+// mixes samples in-place without a new array
+int mixStereoToMono(int16_t* pcm, int numSamples) {
+
+	for (int i = 0; i < numSamples / 2; i++) {
+		float left = ((float)pcm[i * 2] / 32768.0f);
+		float right = ((float)pcm[i * 2 + 1] / 32768.0f);
+		pcm[i] = clampf(left + right, -1.0f, 1.0f) * 32767;
+	}
+
+	return numSamples / 2;
+}
+
+void amplify(int16_t* pcm, int numSamples, double volume) {
+	for (int i = 0; i < numSamples; i++) {
+		double samp = ((double)pcm[i] / 32768.0f);
+		pcm[i] = clampf(samp * volume, -1.0f, 1.0f) * 32767;
+	}
+}

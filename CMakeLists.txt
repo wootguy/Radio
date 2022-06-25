@@ -27,7 +27,8 @@ link_directories(lib)
 if(MSVC)	
 	# Disable C++ exceptions
 	#string(REPLACE "/EHsc" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
-    set(LINK_LIBS ${CMAKE_CURRENT_LIST_DIR}/lib/opus.lib)
+    set(LINK_LIBS ${CMAKE_CURRENT_LIST_DIR}/lib/opus.lib
+				  ${CMAKE_CURRENT_LIST_DIR}/lib/zita-resampler.lib)
 
 else()
     set(CMAKE_CXX_FLAGS "-Wall -m32")
