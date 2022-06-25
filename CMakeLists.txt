@@ -31,12 +31,11 @@ if(MSVC)
 				  ${CMAKE_CURRENT_LIST_DIR}/lib/zita-resampler.lib)
 
 else()
-    set(CMAKE_CXX_FLAGS "-Wall -m32")
+    set(CMAKE_CXX_FLAGS "-Wall")
     set(CMAKE_CXX_FLAGS_DEBUG "-g -O0")
     set(CMAKE_CXX_FLAGS_RELEASE "-Os -fno-exceptions -w -Wfatal-errors")
 
-    set(LINK_LIBS -lopus -lpthread)
-    set(LINK_OPTIONS -R .) # load libraries from the same directory as the program
+    set(LINK_LIBS -lopus -lpthread ${CMAKE_SOURCE_DIR}/lib/libzita-resampler.a)
 endif()
 
 add_executable(${PROJECT_NAME} ${SOURCE_FILES})
