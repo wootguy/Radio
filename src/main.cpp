@@ -11,6 +11,8 @@
 #include <cstring>
 #include "pid.h"
 
+#include "zita-resampler/resampler.h"
+
 using namespace std;
 
 #define MAX_CHANNELS 16
@@ -20,7 +22,141 @@ using namespace std;
 // ffmpeg -i test.m4a -y -f s16le -ar 12000 -ac 1 - >\\.\pipe\MicBotPipe1
 // TODO: output raw pcm, not WAV
 
-int main(int argc, const char **argv)
+vector<float> sample_rate_convert(float* input_samples, int input_count, int input_hz, int output_hz) {
+	Resampler resampler;
+
+	float ratio = (float)output_hz / (float)input_hz;
+	int newSampleCount = ratio * input_count;
+	//int newSampleCountSafe = newSampleCount + 256; // make sure there's enough room in the output buffer
+	vector<float> output_samples;
+	output_samples.resize(newSampleCount);
+
+	resampler.setup(input_hz, output_hz, 1, 32);
+	resampler.inp_count = input_count;
+	resampler.inp_data = input_samples;
+	resampler.out_count = newSampleCount;
+	resampler.out_data = &output_samples[0];
+	resampler.process();
+
+	return output_samples;
+
+}
+
+int encodeFile(string inputPath, string outputPath, SteamVoiceEncoder* encoder, int sampleRate, int samplesPerPacket) {
+	ThreadInputBuffer* stream = new ThreadInputBuffer(PIPE_BUFFER_SIZE);
+
+	if (!fileExists(inputPath)) {
+		fprintf(stderr, "Failed to open input file %s\n", inputPath.c_str());
+		return 1;
+	}
+
+	ifstream inputFile(inputPath, ios::binary);
+	wav_hdr header;
+
+	inputFile.read((char*)&header, sizeof(header));
+
+	if (header.RIFF[0] != 'R' || header.RIFF[1] != 'I' || header.RIFF[2] != 'F' || header.RIFF[3] != 'F') {
+		fprintf(stderr, "ERROR: Invalid WAV file\n");
+		return 1;
+	}
+
+	int numSamples = header.ChunkSize - (sizeof(wav_hdr) - 8);
+
+	int16_t* newSamples;
+
+	if (header.bitsPerSample == 8) {
+		uint8_t* samples = new uint8_t[numSamples];
+		inputFile.read((char*)samples, numSamples);
+		inputFile.close();
+
+		// convert 8bit to 16bit
+		newSamples = new int16_t[numSamples];
+		for (int i = 0; i < numSamples; i++) {
+			newSamples[i] = ((int16_t)samples[i] - 128) * 256;
+		}
+
+		delete[] samples;
+	}
+	else if (header.bitsPerSample == 16) {
+		newSamples = new int16_t[numSamples];
+		inputFile.read((char*)newSamples, numSamples * sizeof(int16_t));
+		inputFile.close();
+	}
+	else {
+		fprintf(stderr, "ERROR: Expected 8 or 16 bit samples\n");
+		return 1;
+	}
+
+	if (header.NumOfChan == 2) {
+		numSamples = mixStereoToMono(newSamples, numSamples);
+	}
+	else if (header.NumOfChan != 1) {
+		fprintf(stderr, "ERROR: Unexpected channel count %d\n", header.NumOfChan);
+		return 1;
+	}
+
+	if (header.SamplesPerSec != sampleRate) {
+		fprintf(stderr, "Resampling %d to %d\n", header.SamplesPerSec, sampleRate);
+
+		float* floatSamples = new float[numSamples];
+		for (int i = 0; i < numSamples; i++) {
+			floatSamples[i] = (float)newSamples[i] / 32768.0f;
+		}
+
+		vector<float> resampled = sample_rate_convert(floatSamples, numSamples, header.SamplesPerSec, sampleRate);
+		delete[] floatSamples;
+
+		delete[] newSamples;
+		numSamples = resampled.size();
+		newSamples = new int16_t[numSamples];
+
+		for (int i = 0; i < numSamples; i++) {
+			newSamples[i] = clampf(resampled[i], -1.0f, 1.0f) * 31767.0f;
+		}
+	}
+
+	if (numSamples % samplesPerPacket != 0) {
+		int samplesToAdd = samplesPerPacket - (numSamples % samplesPerPacket);
+		int16_t* paddedSamples = new int16_t[numSamples + samplesToAdd];
+		memset((char*)(paddedSamples + numSamples), 0, samplesToAdd*sizeof(int16_t));
+		memcpy(paddedSamples, newSamples, numSamples*sizeof(int16_t));
+
+		delete[] newSamples;
+		newSamples = paddedSamples;
+		numSamples += samplesToAdd;
+	}
+
+	ofstream outFile(outputPath);
+	if (!outFile.good()) {
+		fprintf(stderr, "Failed to open output file %s\n", outputPath.c_str());
+		return 1;
+	}
+
+	for (int i = 0; i < numSamples; i += samplesPerPacket) {
+		string packet = encoder->write_steam_voice_packet(newSamples + i, samplesPerPacket);
+		outFile << packet << endl;
+	}
+	outFile.close();
+
+	/*
+	{
+		vector<int16_t> allSamples;
+		for (int i = 0; i < numSamples; i++) {
+			allSamples.push_back(newSamples[i]);
+		}
+
+		WriteOutputWav("hoho_test.wav", allSamples);
+	}
+	*/
+
+	delete[] newSamples;
+
+	fprintf(stderr, "Finished converion!\n");
+
+	return 0;
+}
+
+int main(int argc, const char** argv)
 {
 	vector<ThreadInputBuffer*> inputStreams;
 	int sampleRate = 12000; // opus allows: 8, 12, 16, 24, 48 khz
@@ -33,6 +169,14 @@ int main(int argc, const char **argv)
 	float globalVolume = 1.0f; // global volume adjustment
 	const int packetStreams = 4; // individually mixed packet streams, for multiple voices
 
+	// Steam ids need to be different per stream, if each stream is played at the same time.
+	// Otherwise the client will try to combine the streams weridly and neither will work.
+	uint64_t steam_w00tguy = 0x1100001025464b4; // w00tguy123
+	uint64_t steam_w00tman = 0x110000112909743; // w00tman123
+	uint64_t steam_min = 0x0110000100000001;
+	uint64_t steam_max = 0x01100001FFFFFFFF;
+
+
 	fprintf(stderr, "Sampling rate     : %d Hz\n", sampleRate);
 	fprintf(stderr, "Frame size        : %d samples\n", frameSize);
 	fprintf(stderr, "Frames per packet : %d\n", framesPerPacket);
@@ -43,6 +187,13 @@ int main(int argc, const char **argv)
 	//getValidFrameConfigs();
 
 	crc32_init();
+
+	if (argc >= 4) {
+		uint64_t steamid = steam_min + atoi(argv[3]);
+		SteamVoiceEncoder* encoder = new SteamVoiceEncoder(frameSize, framesPerPacket, sampleRate, opusBitrate, steamid, OPUS_APPLICATION_AUDIO);
+		return encodeFile(argv[1], argv[2], encoder, sampleRate, samplesPerPacket);
+	}
+
 	SteamVoiceEncoder* encoders[packetStreams];
 
 	int16_t* inBuffer = new int16_t[samplesPerPacket];
@@ -58,11 +209,6 @@ int main(int argc, const char **argv)
 		inputStreams.push_back(stream);
 	}
 
-	// Steam ids need to be different pe stream, if each stream is played at the same time.
-	// Otherwise the client will try to combine the streams weridly and neither will work.
-	uint64_t steamid64 = 0x4397901201001001; // forgot who
-	uint64_t steam_w00tguy = 0x1100001025464b4; // w00tguy123
-	uint64_t steam_w00tman = 0x110000112909743; // w00tman123
 	for (int i = 0; i < packetStreams; i++) {
 		mixBuffer[i] = new float[samplesPerPacket];
 
@@ -139,7 +285,7 @@ int main(int argc, const char **argv)
 			activeStreams[mixerChannel]++;
 
 			for (int k = 0; k < samplesPerPacket; k++) {
-				mixBuffer[mixerChannel][k] += ((float)inBuffer[k] / 32768.0f)*inputStreams[i]->volume;
+				mixBuffer[mixerChannel][k] += ((float)inBuffer[k] / 32768.0f) * inputStreams[i]->volume;
 			}
 		}
 		inputStreams = newStreams; // remove any finished streamds

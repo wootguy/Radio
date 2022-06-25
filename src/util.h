@@ -30,3 +30,12 @@ void WriteOutputWav(std::string fname, std::vector<int16_t>& allSamples);
 std::vector<std::string> splitString(std::string str, const char* delimitters);
 
 long long getTimeMillis();
+
+bool fileExists(const std::string& name);
+
+int resamplePcm(int16_t* pcm_old, int16_t* pcm_new, int oldRate, int newRate, int numSamples);
+
+// mixes samples in-place without a new array
+int mixStereoToMono(int16_t* pcm, int numSamples);
+
+void amplify(int16_t* pcm, int numSamples, double volume);
