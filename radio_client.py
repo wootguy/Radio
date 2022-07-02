@@ -30,7 +30,7 @@ cached_video_urls = {} # maps a youtube link ton audio link that VLC can stream
 #command_queue.put('w00tguy\\en\\80\\https://youtu.be/-zEJEdbZUP8')
 #command_queue.put('w00tguy\\en\\80\\~testaroni')
 
-hostname = '192.168.254.158' # woop pc
+hostname = '192.168.0.105' # woop pc
 #hostname = '107.191.105.136' # VPS
 hostport = 1337
 our_addr = (hostname, hostport)
@@ -500,8 +500,7 @@ def steam_voice_stderr():
 			continue
 		print("[steam_voice] %s" % line)
 
-process_name = 'steam_voice.exe' if os.name == 'nt' else 'steam_voice'
-steam_voice = subprocess.Popen(os.path.join('lib', process_name),
+steam_voice = subprocess.Popen(os.path.join('lib', 'steam_voice'),
 							   bufsize=1, universal_newlines=True,
 							   stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
 

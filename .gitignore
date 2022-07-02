@@ -4,3 +4,5 @@ downloader/
 tts/
 /lib/steam_voice.exe
 /lib/steam_voice.pdb
+.vs/
+.vscode/
