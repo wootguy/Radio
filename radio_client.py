@@ -504,6 +504,7 @@ process_name = 'steam_voice.exe' if os.name == 'nt' else 'steam_voice'
 steam_voice = subprocess.Popen(os.path.join('lib', process_name),
 							   bufsize=1, universal_newlines=True,
 							   stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+
 t = Thread(target = command_loop, args =( ))
 t.daemon = True
 t.start()
