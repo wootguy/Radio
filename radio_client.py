@@ -25,11 +25,15 @@ lock_queue = queue.Queue()
 command_prefix = '~'
 cached_video_urls = {} # maps a youtube link ton audio link that VLC can stream
 
+script_start_time = datetime.datetime.now()
+script_restart_delay = 60*60*8 # restart occasionally to prevent memory leak killing svends or smth
+
 #command_queue.put('w00tguy\\en\\100\\https://www.youtube.com/watch?v=zZdVwTjUtjg')
 #command_queue.put('w00tguy\\en\\80\\~test test test test test test test test test test test test test test')
 #command_queue.put('w00tguy\\en\\80\\https://youtu.be/-zEJEdbZUP8')
 #command_queue.put('w00tguy\\en\\80\\~testaroni')
 
+#hostname = '47.157.183.178'
 hostname = '192.168.254.158' # woop pc
 #hostname = '107.191.105.136' # VPS
 hostport = 1337
@@ -553,6 +557,13 @@ while True:
 		line = command_queue.get(True, 0.05)
 	except Exception as e:
 		pass
+	
+	# TODO: fix the memory leak
+	time_since_restart = (datetime.datetime.now() - script_start_time).total_seconds()	
+	if time_since_restart > script_restart_delay:
+		send_queue.put("~Server needs to restart because it's shitty.")
+		time.sleep(1)
+		sys.exit()
 	
 	if not line:
 		continue
