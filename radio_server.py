@@ -1,4 +1,4 @@
-import socket, sys, time, datetime, os, queue
+import socket, sys, time, datetime, os, queue, traceback
 from threading import Thread
 
 # "client" that generates the voice data
@@ -86,7 +86,7 @@ def follow(socket, thefile):
 			response_data = tcp_listen(socket, response_data)
 			if response_data is None:
 				break
-				
+			
 			continue
 
 		yield line
@@ -104,16 +104,30 @@ def command_loop():
 			tcp_socket.settimeout(1)
 			print("Command socket connected")
 
-			logfile = open(voice_cmd_file, encoding='utf8', errors='ignore')
-			loglines = follow(tcp_socket, logfile)
-
-			for line in loglines:
-				print("Send command: " + line.strip())
-				tcp_socket.sendall(line.encode())
+			while True:
+				logfile = open(voice_cmd_file, encoding='utf8', errors='ignore')
+				loglines = follow(tcp_socket, logfile)
 				
+				for line in loglines:
+					if "truncate_radio_file" in line:
+						print("Truncating: " + voice_cmd_file)
+						logfile.close()
+						os.remove(voice_cmd_file)
+						with open(voice_cmd_file, 'w') as fp:
+							pass 
+						logfile = None
+						break
+					print("Send command: " + line.strip())
+					tcp_socket.sendall(line.encode())
+				
+				if logfile:
+					break
+			
+			print("Closing socket. Finished file read.")
 			tcp_socket.close()
+				
 		except Exception as e:
-			print(e)
+			traceback.print_exc()
 
 # Tell the voice client that we're still listening.
 # This also initiates a connection without having to open a port on the server running this script.

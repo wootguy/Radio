@@ -19,6 +19,10 @@
 // - warning message for dj ejection
 // - player becomes null now maybe because id update changes
 // - failed to play message happens twice
+// - allow changing target volume
+// - playback failing again with ytdl lib update
+// os.startfile(sys.argv[0])
+// sys.exit()
 
 // test links:
 // https://youtu.be/GXv1hDICJK0 (age restricted)
@@ -376,6 +380,18 @@ void MapInit() {
 	for (uint i = 0; i < g_channels.size(); i++) {
 		g_channels[i].lastSongRequest = 0;
 	}
+	
+	File@ file = g_FileSystem.OpenFile( voice_server_file, OpenFile::APPEND );
+	
+	if (!file.IsOpen()) {
+		string text = "[Radio] Failed to open: " + voice_server_file + "\n";
+		println(text);
+		g_Log.PrintF(text);
+		return;
+	}
+	
+	file.Write("truncate_radio_file\n");
+	file.Close();
 }
 
 // for quick plugin reloading (comment out music #include first)
