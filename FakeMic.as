@@ -246,6 +246,8 @@ void handle_radio_message(string msg) {
 			reason += parts[i];
 		}
 		
+		reason.Trim();
+		
 		g_channels[channel].cancelSong(songId, reason);
 		
 		return;

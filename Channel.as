@@ -340,12 +340,33 @@ class Channel {
 		
 		if (song !is null) {
 			song.loadState = SONG_FAILED;
-			announce("Failed to play: " + song.path + "\n");
-			g_Log.PrintF("Failed to play: " + song.path + "\n");
 			
 			if (reason.Length() > 0) {
+				announce("Failed to play: " + song.path + "\n");
+				g_Log.PrintF("Failed to play: " + song.path + "\n");
 				announce(reason + "\n");
 				g_Log.PrintF(reason + "\n");
+			} else {				
+				// probably a temporary error, so try to start again
+				if (!song.noRestart) {
+					Song restartSong;
+					restartSong.path = song.path;
+					restartSong.loadState = SONG_UNLOADED;
+					restartSong.id = g_song_id;
+					restartSong.requester = song.requester;
+					restartSong.args = song.args;
+					restartSong.noRestart = true; // only try this once
+					g_song_id += 1;
+					
+					announce("Audio failed to load, but no error reason was given. Attempting to start it again.\n", HUD_PRINTNOTIFY);
+					
+					playSong(restartSong);
+				} else {
+					announce("Failed to play: " + song.path + "\n");
+					g_Log.PrintF("Failed to play: " + song.path + "\n");
+					announce("No reason was given. Maybe try again in a few seconds.\n");
+				}
+				
 			}
 		} else {
 			println("Failed to cancel song with id " + songId);
