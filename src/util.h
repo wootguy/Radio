@@ -33,7 +33,11 @@ long long getTimeMillis();
 
 bool fileExists(const std::string& name);
 
+// fast resample without pitch correction
 int resamplePcm(int16_t* pcm_old, int16_t* pcm_new, int oldRate, int newRate, int numSamples);
+
+// high quality resample with pitch correction
+std::vector<float> sample_rate_convert(float* input_samples, int input_count, int input_hz, int output_hz);
 
 // mixes samples in-place without a new array
 int mixStereoToMono(int16_t* pcm, int numSamples);

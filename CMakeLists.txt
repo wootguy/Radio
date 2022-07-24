@@ -18,6 +18,7 @@ set(SOURCE_FILES
 	src/util.h src/util.cpp
 	src/pid.h src/pid.cpp
 	src/crc32.h src/crc32.cpp
+	src/ChatSoundConverter.h src/ChatSoundConverter.cpp
 )
 
 include_directories(src)

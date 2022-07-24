@@ -10,6 +10,7 @@
 #include "CommandQueue.h"
 #include <cstring>
 #include "pid.h"
+#include "ChatSoundConverter.h"
 
 #include "zita-resampler/resampler.h"
 
@@ -21,26 +22,6 @@ using namespace std;
 // ffmpeg -i test.wav -y -f s16le -ar 12000 -ac 1 - >\\.\pipe\MicBotPipe0
 // ffmpeg -i test.m4a -y -f s16le -ar 12000 -ac 1 - >\\.\pipe\MicBotPipe1
 // TODO: output raw pcm, not WAV
-
-vector<float> sample_rate_convert(float* input_samples, int input_count, int input_hz, int output_hz) {
-	Resampler resampler;
-
-	float ratio = (float)output_hz / (float)input_hz;
-	int newSampleCount = ratio * input_count;
-	//int newSampleCountSafe = newSampleCount + 256; // make sure there's enough room in the output buffer
-	vector<float> output_samples;
-	output_samples.resize(newSampleCount);
-
-	resampler.setup(input_hz, output_hz, 1, 32);
-	resampler.inp_count = input_count;
-	resampler.inp_data = input_samples;
-	resampler.out_count = newSampleCount;
-	resampler.out_data = &output_samples[0];
-	resampler.process();
-
-	return output_samples;
-
-}
 
 int encodeFile(string inputPath, string outputPath, SteamVoiceEncoder* encoder, int sampleRate, int samplesPerPacket) {
 	ThreadInputBuffer* stream = new ThreadInputBuffer(PIPE_BUFFER_SIZE);
@@ -187,6 +168,11 @@ int main(int argc, const char** argv)
 	//getValidFrameConfigs();
 
 	crc32_init();
+
+	if (argc == 5 && string(argv[1]) == string("chatsounds")) {
+		ChatSoundConverter csounds(argv[2], argv[3], argv[4]);
+		return csounds.pollCommands();
+	}
 
 	if (argc >= 4) {
 		uint64_t steamid = steam_min + atoi(argv[3]);

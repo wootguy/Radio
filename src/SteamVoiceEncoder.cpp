@@ -65,8 +65,8 @@ string SteamVoiceEncoder::write_steam_voice_packet(int16_t* samples, int sampleL
 		}
 	}
 
-
 	vector<uint8_t> packet;
+	packet.reserve(512);
 	packet.push_back((uint64_t)(steamid >> 0) & 0xff);
 	packet.push_back((uint64_t)(steamid >> 8) & 0xff);
 	packet.push_back((uint64_t)(steamid >> 16) & 0xff);
@@ -109,22 +109,13 @@ string SteamVoiceEncoder::write_steam_voice_packet(int16_t* samples, int sampleL
 	packet.push_back((crc32 >> 16) & 0xff);
 	packet.push_back((crc32 >> 24) & 0xff);
 
-	//outFile << "\t{";
+	static string hex_codes = "0123456789abcdef";
 
-	for (int k = 0; k < packet.size(); k++) {
-		//outFile << (int)packet[k];
-
-		if (k < packet.size() - 1) {
-			//outFile << ", ";
-		}
-	}
-
-	stringstream hexdata;
+	string hexdata;
 	for (int i = 0; i < packet.size(); i++) {
-		hexdata << setfill('0') << setw(2) << hex << (unsigned int)packet[i];
+		hexdata += hex_codes[packet[i] >> 4];
+		hexdata += hex_codes[packet[i] & 0xf];
 	}
-
-	//outFile << "},\n";
 
 	/*
 	if (packet.size() > 500) {
@@ -133,7 +124,7 @@ string SteamVoiceEncoder::write_steam_voice_packet(int16_t* samples, int sampleL
 	}
 	*/
 
-	return hexdata.str();
+	return hexdata;
 }
 
 void SteamVoiceEncoder::reset()

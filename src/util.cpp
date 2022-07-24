@@ -3,6 +3,8 @@
 #include <string.h>
 #include <chrono>
 
+#include "zita-resampler/resampler.h"
+
 using namespace std;
 using std::chrono::milliseconds;
 using std::chrono::duration_cast;
@@ -83,6 +85,25 @@ int resamplePcm(int16_t* pcm_old, int16_t* pcm_new, int oldRate, int newRate, in
 	}
 
 	return numSamplesNew;
+}
+
+vector<float> sample_rate_convert(float* input_samples, int input_count, int input_hz, int output_hz) {
+	Resampler resampler;
+
+	float ratio = (float)output_hz / (float)input_hz;
+	int newSampleCount = ratio * input_count;
+	//int newSampleCountSafe = newSampleCount + 256; // make sure there's enough room in the output buffer
+	vector<float> output_samples;
+	output_samples.resize(newSampleCount);
+
+	resampler.setup(input_hz, output_hz, 1, 32);
+	resampler.inp_count = input_count;
+	resampler.inp_data = input_samples;
+	resampler.out_count = newSampleCount;
+	resampler.out_data = &output_samples[0];
+	resampler.process();
+
+	return output_samples;
 }
 
 // mixes samples in-place without a new array
