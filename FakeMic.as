@@ -24,6 +24,7 @@ uint16 expectedNextPacketId = 0;
 float g_packet_delay = 0.05f;
 
 bool g_admin_pause_packets = false;
+bool g_lag_pause_packets = false;
 
 array<VoicePacket> g_voice_data_stream;
 
@@ -101,7 +102,7 @@ void load_samples() {
 		return;
 	}
 	
-	if (!g_any_radio_listeners || g_admin_pause_packets) {
+	if (!g_any_radio_listeners || g_admin_pause_packets || g_lag_pause_packets) {
 		g_next_load_samples = g_EngineFuncs.Time() + 1.0f;
 		return;
 	}

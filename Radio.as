@@ -49,6 +49,7 @@ CCVar@ g_djReserveTime;
 CCVar@ g_djIdleTime;
 CCVar@ g_maxQueue;
 CCVar@ g_channelCount;
+CCVar@ g_maxPlayers;
 
 CClientCommand _radio("radio", "radio commands", @consoleCmd );
 CClientCommand _radio2("radiodbg", "radio commands", @consoleCmd );
@@ -254,6 +255,7 @@ void PluginInit() {
 	@g_djIdleTime = CCVar("djIdleTime", 180, "Time a DJ can be idle before being ejected", ConCommandFlag::AdminOnly);
 	@g_maxQueue = CCVar("maxQueue", 8, "Max songs that can be queued", ConCommandFlag::AdminOnly);
 	@g_channelCount = CCVar("channelCount", 3, "Number of available channels", ConCommandFlag::AdminOnly);
+	@g_maxPlayers = CCVar("maxPlayers", 26, "Max players before audio is disabled to prevent lag", ConCommandFlag::AdminOnly);
 	
 	g_channels.resize(g_channelCount.GetInt());
 	
@@ -600,6 +602,8 @@ void updateVoiceSlotIdx() {
 void updateSleepState() {
 	bool old_listeners = g_any_radio_listeners;
 	g_any_radio_listeners = false;
+	int numPlayers = 0;
+	
 	for ( int i = 1; i <= g_Engine.maxClients; i++ )
 	{
 		CBasePlayer@ p = g_PlayerFuncs.FindPlayerByIndex(i);
@@ -608,14 +612,25 @@ void updateSleepState() {
 			continue;
 		}
 		
+		numPlayers += 1;
 		PlayerState@ state = getPlayerState(p);
 		
 		// advertise to players in who are not listening to anything, or if their channel has nothing playing
 		if (state.channel != -1) {
 			g_any_radio_listeners = true;
-			break;
 		}
 	}
+	
+	bool should_pause_radio = numPlayers >= g_maxPlayers.GetInt();
+	if (should_pause_radio != g_lag_pause_packets) {
+		if (should_pause_radio) {
+			g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "[Radio] Audio paused to prevent lag while player count is high.\n");
+		} else {
+			g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "[Radio] Audio resumed. Player count is low enough that the server shouldn't lag.\n");
+		}
+	}
+	g_lag_pause_packets = should_pause_radio;
+	
 	
 	if (g_any_radio_listeners != old_listeners) {
 		send_voice_server_message("Radio\\en\\100\\" + (g_any_radio_listeners ? ".resume_packets" : ".pause_packets"));
