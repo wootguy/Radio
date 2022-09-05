@@ -135,6 +135,32 @@ void callbackMenuRadio(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const 
 	}
 }
 
+void joinRadioChannel(CBasePlayer@ plr, int newChannel) {
+	PlayerState@ state = getPlayerState(plr);
+	
+	int oldChannel = state.channel;
+	state.channel = newChannel;
+	
+	g_Scheduler.SetTimeout("openMenuRadio", 0.0f, EHandle(plr));
+	
+	if (oldChannel == state.channel) {
+		return;
+	}
+	
+	if (oldChannel >= 0) {
+		g_channels[oldChannel].handlePlayerLeave(plr, state.channel);
+	}
+	
+	bool musicIsPlaying = g_channels[state.channel].activeSongs.size() > 0;
+
+	clientCommand(plr, "stopsound");
+	
+	AmbientMusicRadio::toggleMapMusic(plr, !musicIsPlaying);
+	
+	g_channels[state.channel].announce("" + plr.pev.netname + " tuned in.", HUD_PRINTNOTIFY, plr);
+	updateSleepState();
+}
+
 void callbackMenuChannelSelect(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber, const CTextMenuItem@ item) {
 	if (item is null or plr is null or !plr.IsConnected()) {
 		return;
@@ -148,31 +174,13 @@ void callbackMenuChannelSelect(CTextMenu@ menu, CBasePlayer@ plr, int itemNumber
 	string chanPrefix = "channel-";
 
 	if (option.Find(chanPrefix) == 0) {
-		int oldChannel = state.channel;
-		state.channel = atoi(option.SubString(chanPrefix.Length(), option.Find(":")));
+		int newChannel = atoi(option.SubString(chanPrefix.Length(), option.Find(":")));
 		
 		if (int(option.Find(":invited")) != -1) {
 			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] This menu is opened by saying .radio\n");
 		}
 		
-		g_Scheduler.SetTimeout("openMenuRadio", 0.0f, EHandle(plr));
-		
-		if (oldChannel == state.channel) {
-			return;
-		}
-		
-		if (oldChannel >= 0) {
-			g_channels[oldChannel].handlePlayerLeave(plr, state.channel);
-		}
-		
-		bool musicIsPlaying = g_channels[state.channel].activeSongs.size() > 0;
-
-		clientCommand(plr, "stopsound");
-		
-		AmbientMusicRadio::toggleMapMusic(plr, !musicIsPlaying);
-		
-		g_channels[state.channel].announce("" + plr.pev.netname + " tuned in.", HUD_PRINTNOTIFY, plr);
-		updateSleepState();
+		joinRadioChannel(plr, newChannel);
 	} else if (option.Find("block-request") == 0) {
 		state.blockInvites = true;
 		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] You will no longer receive radio invites.\n");
@@ -435,7 +443,13 @@ void openMenuRadio(EHandle h_plr) {
 	Channel@ chan = g_channels[state.channel];
 	
 	@g_menus[eidx] = CTextMenu(@callbackMenuRadio);
-	g_menus[eidx].SetTitle("\\yRadio - " + chan.name);
+	
+	if (g_channelCount.GetInt() > 1) {
+		g_menus[eidx].SetTitle("\\yRadio - " + chan.name);
+	} else {
+		g_menus[eidx].SetTitle("\\yRadio");
+	}
+	
 
 	CBasePlayer@ dj = chan.getDj();
 	bool isDjReserved = chan.isDjReserved();
@@ -447,13 +461,13 @@ void openMenuRadio(EHandle h_plr) {
 		muted = "speech";
 	} else if (state.muteMode == MUTE_VIDEOS) {
 		muted = "videos";
-	}
-	
-	
+	}	
 
 	g_menus[eidx].AddItem("\\wHelp\\y", any("help"));
 	g_menus[eidx].AddItem("\\wTurn off\\y", any("turn-off"));
-	g_menus[eidx].AddItem("\\wChange channel\\y", any("channels"));
+	if (g_channelCount.GetInt() > 1) {
+		g_menus[eidx].AddItem("\\wChange channel\\y", any("channels"));
+	}
 	g_menus[eidx].AddItem("\\w" + (canDj ? "Edit" : "View") + " queue  " + chan.getQueueCountString() + "\\y", any("edit-queue"));
 	g_menus[eidx].AddItem("\\wStop video(s)\\y", any("stop-menu"));
 	g_menus[eidx].AddItem("\\wHUD: " + (state.showHud ? "on" : "off") + "\\y", any("hud"));
@@ -604,7 +618,11 @@ void openMenuInviteRequest(EHandle h_plr, string asker, int channel) {
 	Channel@ chan = g_channels[channel];
 	
 	@g_menus[eidx] = CTextMenu(@callbackMenuChannelSelect);
-	g_menus[eidx].SetTitle("\\yYou're invited to listen to\nthe radio on " + g_channels[channel].name + "\n-" + asker + "\n");
+	if (g_channelCount.GetInt() > 1) {
+		g_menus[eidx].SetTitle("\\yYou're invited to listen to\nthe radio on " + g_channels[channel].name + "\n-" + asker + "\n");
+	} else {
+		g_menus[eidx].SetTitle("\\yYou're invited to listen to\nthe radio\n-" + asker + "\n");
+	}
 	
 	g_menus[eidx].AddItem("\\wAccept\\y", any("channel-" + channel + ":invited"));
 	g_menus[eidx].AddItem("\\wIgnore\\y", any("exit"));

@@ -254,7 +254,7 @@ void PluginInit() {
 	@g_djReserveTime = CCVar("djReserveTime", 240, "Time to reserve DJ slots after level change", ConCommandFlag::AdminOnly);
 	@g_djIdleTime = CCVar("djIdleTime", 180, "Time a DJ can be idle before being ejected", ConCommandFlag::AdminOnly);
 	@g_maxQueue = CCVar("maxQueue", 8, "Max songs that can be queued", ConCommandFlag::AdminOnly);
-	@g_channelCount = CCVar("channelCount", 3, "Number of available channels", ConCommandFlag::AdminOnly);
+	@g_channelCount = CCVar("channelCount", 1, "Number of available channels", ConCommandFlag::AdminOnly);
 	@g_maxPlayers = CCVar("maxPlayers", 26, "Max players before audio is disabled to prevent lag", ConCommandFlag::AdminOnly);
 	
 	g_channels.resize(g_channelCount.GetInt());
@@ -268,6 +268,12 @@ void PluginInit() {
 			g_channels[i].spamMode = true;
 			g_channels[i].maxStreams = 6;
 		}
+	}
+	
+	if (g_channels.size() == 1) {
+		g_channels[0].name = "Radio";
+		g_channels[0].spamMode = false;
+		g_channels[0].maxStreams = 12;
 	}
 	
 	g_Scheduler.SetInterval("radioThink", 0.5f, -1);
@@ -350,8 +356,11 @@ void loadChannelListeners() {
 		
 		if (line[0] == '\\') {
 			channelList = atoi(line.SubString(1,2));
-			if (channelList < 0 or channelList >= int(g_channels.size())) {
+			if (channelList < 0) {
 				channelList = -1;
+			}
+			if (channelList >= int(g_channels.size())) {
+				channelList = 0;
 			}
 			continue;
 		}
@@ -642,12 +651,14 @@ void showConsoleHelp(CBasePlayer@ plr, bool showChatMessage) {
 	
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '------------------------------ Radio Help ------------------------------\n\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'The radio speaks chat messages aloud and can play audio from youtube/soundcloud/etc.\n\n');
-	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'To queue a video, open the console and type "say ~" followed by a link. Example:\n');
-	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    say ~https://www.youtube.com/watch?v=b8HO6hba9ZE\n\n');
-	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'To bypass the queue, use "!" instead of "~". Example:\n');
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'To queue a video, open the console and type "say " followed by a link. Example:\n');
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    say https://www.youtube.com/watch?v=b8HO6hba9ZE\n\n');
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'To bypass the queue, use "!". Example:\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    say !https://www.youtube.com/watch?v=b8HO6hba9ZE\n\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'To play a video at a specific time, add a timecode after the link. Example:\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    say !https://www.youtube.com/watch?v=b8HO6hba9ZE 0:27\n\n');
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'To hide your message from the chat, use "~". Example:\n');
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    say ~You can hear me but you cannnot see me!\n\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Is the audio stuttering?\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    Try typing "stopsound" in console. Voice playback often breaks after viewing a map cutscene.\n');
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    If that doesn\'t help, then check if you have any "loss" shown with "net_graph 4". If you do\n');
@@ -702,7 +713,13 @@ bool doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 			if (isEnabled) {
 				openMenuRadio(EHandle(plr));
 			} else {
-				openMenuChannelSelect(EHandle(plr));
+				if (g_channelCount.GetInt() == 1) {
+					joinRadioChannel(plr, 0);
+					openMenuRadio(EHandle(plr));
+				} else {
+					openMenuChannelSelect(EHandle(plr));
+				}
+				
 			}
 		}
 		else if (args.ArgC() > 1 and args[1] == "hud") {
@@ -907,14 +924,18 @@ bool doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 		
 		
 		return true;
-	} else if (lowerArg.Find("https://") == 1 || lowerArg.Find("http://") == 1) {
+	} else if (lowerArg.Find("https://") <= 1 || lowerArg.Find("http://") <= 1) {	
 		if (state.channel != -1) {
+			lowerArg.Trim();
+			bool isHiddenChat = lowerArg.Find("https://") == 1 || lowerArg.Find("http://") == 1;
+			
 			Channel@ chan = @g_channels[state.channel];
 			bool canDj = chan.canDj(plr);
 			
 			string url = args[0];
 			bool playNow = url[0] == '!';
-			url = url.SubString(1);
+			if (isHiddenChat)
+				url = url.SubString(1);
 			
 			Song song;
 			song.path = url;
@@ -924,6 +945,11 @@ bool doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 			song.args = args[1];
 			
 			g_song_id += 1;
+			
+			if (g_admin_pause_packets || g_lag_pause_packets) {
+				g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] The plugin is temporarily disabled to prevent lag.\n");
+				return true;
+			}
 			
 			if (playNow and int(chan.activeSongs.size()) >= chan.maxStreams) {
 				g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] This channel can't play more than " + chan.maxStreams + " videos at the same time.\n");
@@ -948,7 +974,7 @@ bool doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 				}
 			}
 			
-			return true;
+			return isHiddenChat;
 		}
 	} else if (args[0].Length() > 0) {
 		if (g_any_radio_listeners and lowerArg.Find("https://") != 0 and lowerArg.Find("http://") != 0) {

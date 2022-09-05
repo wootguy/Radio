@@ -336,8 +336,8 @@ void load_packets_from_file() {
 						  
 		array<string> parts = line.Split(":"); // packet_id : channel_1_packet : channel_2_packet : ...
 		
-		if (parts.size()-1 != g_channels.size()+1) {
-			println("Packet streams != channel count + 1 (" + (parts.size()-1) + " " + g_channels.size() + "): " + line);	
+		if (parts.size()-1 < g_channels.size()+1) {
+			println("Packet streams > channel count + 1 (" + (parts.size()-1) + " " + g_channels.size() + "): " + line);	
 			g_Log.PrintF("[FakeMic] Bad packet stream count: " + line + "\n");
 			finish_sample_load();
 			return; // don't let packet buffer sizes get out of sync between channels
@@ -379,10 +379,11 @@ void load_packets_from_file() {
 				packet.size++;
 			}
 			
-			if (c-1 < g_channels.size()) {
+			if (c == parts.size()-1) {
+				g_voice_data_stream.insertLast(packet); // TTS data should always come last in steam_voice output
+			}
+			else if (c-1 < g_channels.size()) {
 				g_channels[c-1].packetStream.insertLast(packet);
-			} else {
-				g_voice_data_stream.insertLast(packet);
 			}
 
 			if (packetString.Length() % 2 == 1) {
