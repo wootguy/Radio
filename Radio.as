@@ -50,6 +50,7 @@ CCVar@ g_djIdleTime;
 CCVar@ g_maxQueue;
 CCVar@ g_channelCount;
 CCVar@ g_maxPlayers;
+CCVar@ g_maxPlayers2;
 
 CClientCommand _radio("radio", "radio commands", @consoleCmd );
 CClientCommand _radio2("radiodbg", "radio commands", @consoleCmd );
@@ -61,6 +62,7 @@ string channel_listener_file = "scripts/plugins/store/radio_listeners.txt";
 array<int> g_player_lag_status;
 uint g_song_id = 1;
 bool g_any_radio_listeners = false;
+bool g_is_scripted_map = false;
 
 
 // Menus need to be defined globally when the plugin is loaded or else paging doesn't work.
@@ -255,7 +257,8 @@ void PluginInit() {
 	@g_djIdleTime = CCVar("djIdleTime", 180, "Time a DJ can be idle before being ejected", ConCommandFlag::AdminOnly);
 	@g_maxQueue = CCVar("maxQueue", 8, "Max songs that can be queued", ConCommandFlag::AdminOnly);
 	@g_channelCount = CCVar("channelCount", 1, "Number of available channels", ConCommandFlag::AdminOnly);
-	@g_maxPlayers = CCVar("maxPlayers", 26, "Max players before audio is disabled to prevent lag", ConCommandFlag::AdminOnly);
+	@g_maxPlayers = CCVar("maxPlayers", 28, "Max players before audio is disabled to prevent lag on normal maps", ConCommandFlag::AdminOnly);
+	@g_maxPlayers2 = CCVar("maxPlayers2", 24, "Max players before audio is disabled to prevent lag on scripted maps", ConCommandFlag::AdminOnly);
 	
 	g_channels.resize(g_channelCount.GetInt());
 	
@@ -387,6 +390,8 @@ void MapInit() {
 		state.lastDjToggle = -9999;
 		state.lastSongSkip = -9999;
 	}
+	
+	g_is_scripted_map = false;
 	
 	for (uint i = 0; i < g_channels.size(); i++) {
 		g_channels[i].lastSongRequest = 0;
@@ -531,6 +536,15 @@ void radioThink() {
 		if (state.channel >= 0 and state.showHud) {
 			g_channels[state.channel].updateHud(plr, state);
 		}
+		
+		if (!g_is_scripted_map) {
+			CBaseEntity@ heldWep = plr.m_hActiveItem;
+			
+			if (heldWep !is null and g_CustomEntityFuncs.IsCustomEntity(heldWep.pev.classname)) {
+				g_is_scripted_map = true;
+				updateSleepState();
+			}
+		}
 	}
 }
 
@@ -630,12 +644,14 @@ void updateSleepState() {
 		}
 	}
 	
-	bool should_pause_radio = numPlayers >= g_maxPlayers.GetInt();
+	int playerLimit = g_is_scripted_map ? g_maxPlayers2.GetInt() : g_maxPlayers.GetInt();
+	
+	bool should_pause_radio = numPlayers >= playerLimit;
 	if (should_pause_radio != g_lag_pause_packets) {
 		if (should_pause_radio) {
-			g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "[Radio] Audio paused to prevent lag while player count is high.\n");
+			g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "[Radio] Plugin disabled to prevent lag while player count is high.\n");
 		} else {
-			g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "[Radio] Audio resumed. Player count is low enough that the server shouldn't lag.\n");
+			g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "[Radio] Plugin re-enabled. Player count is low enough that the server shouldn't lag.\n");
 		}
 	}
 	g_lag_pause_packets = should_pause_radio;
@@ -947,7 +963,11 @@ bool doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 			g_song_id += 1;
 			
 			if (g_admin_pause_packets || g_lag_pause_packets) {
+				int playerLimit = g_is_scripted_map ? g_maxPlayers2.GetInt() : g_maxPlayers.GetInt();
+				
 				g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] The plugin is temporarily disabled to prevent lag.\n");
+				g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] It will re-enable when there are less than " + (playerLimit+1) + " players in the server.\n");
+				g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] The player limit is especially low because this map uses scripted weapons, which can be laggy on their own.\n");
 				return true;
 			}
 			
