@@ -47,11 +47,12 @@ int ChatSoundConverter::pollCommands() {
 				vector<string> parts = splitString(line, " ");
 				string trigger = parts[0];
 				int pitch = atoi(parts[1].c_str());
-				int id = atoi(parts[2].c_str());
+				int volume = atoi(parts[2].c_str());
+				int id = atoi(parts[3].c_str());
 
-				printf("%s %d %d\n", trigger.c_str(), pitch, id);
+				printf("%s %d %d %d\n", trigger.c_str(), pitch, volume, id);
 
-				ConvertJob* job = createConvertJob(trigger, pitch, id);
+				ConvertJob* job = createConvertJob(trigger, pitch, volume, id);
 
 				if (job) {
 					jobs.push_back(job);
@@ -225,7 +226,7 @@ bool ChatSoundConverter::loadChatsound(string trigger, string inputPath) {
 	return true;
 }
 
-ConvertJob* ChatSoundConverter::createConvertJob(string trigger, int pitch, int id) {
+ConvertJob* ChatSoundConverter::createConvertJob(string trigger, int pitch, int volume, int id) {
 	if (chatsounds_to_pcm.find(trigger) == chatsounds_to_pcm.end()) {
 		printf("Unknown chatsound trigger '%s'\n", trigger.c_str());
 		return NULL;
@@ -234,9 +235,11 @@ ConvertJob* ChatSoundConverter::createConvertJob(string trigger, int pitch, int 
 	vector<int8_t>& loadedSamples = chatsounds_to_pcm[trigger];
 	int numSamples = loadedSamples.size();
 	int16_t* samples = new int16_t[numSamples];
+	float scale = (float)volume / 100.0f;
 
 	for (int i = 0; i < numSamples; i++) {
-		samples[i] = loadedSamples[i] << 8;
+		float scaledSample = (loadedSamples[i] << 8) * scale;
+		samples[i] = clampi(scaledSample, -32768, 32767);
 	}
 
 	if (numSamples % samplesPerPacket != 0) {

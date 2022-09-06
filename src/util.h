@@ -25,6 +25,8 @@ typedef struct WAV_HEADER {
 
 float clampf(float val, float min, float max);
 
+int clampi(int val, int min, int max);
+
 void WriteOutputWav(std::string fname, std::vector<int16_t>& allSamples);
 
 std::vector<std::string> splitString(std::string str, const char* delimitters);

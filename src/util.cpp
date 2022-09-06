@@ -21,6 +21,17 @@ float clampf(float val, float min, float max) {
 	return val;
 }
 
+int clampi(int val, int min, int max) {
+	if (val > max) {
+		return max;
+	}
+	else if (val < min) {
+		return min;
+	}
+
+	return val;
+}
+
 void WriteOutputWav(string fname, vector<int16_t>& allSamples) {
 	wav_hdr header;
 	header.ChunkSize = allSamples.size() * 2 + sizeof(wav_hdr) - 8;
