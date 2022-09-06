@@ -325,7 +325,7 @@ def play_tts(speaker, text, id, lang, pitch, is_hidden):
 		
 	totalCaps = sum(1 for c in text if c.isupper())
 	totalLower = sum(1 for c in text if c.islower())
-	volume = 1000 if totalCaps > totalLower else 2
+	volume = 1000 if totalCaps > totalLower else 0.5
 	
 	# stop their last speech, if any
 	if speaker in g_tts_players:
