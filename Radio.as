@@ -90,6 +90,7 @@ class PlayerState {
 	float lastRequest; // for request cooldowns
 	float lastDjToggle; // for cooldown
 	float lastSongSkip; // for cooldown
+	float lastLaggyCmd; // for cooldown
 	bool showHud = true;
 	bool playAfterFullyLoaded = true; // toggle map music when fully loaded into the map
 	bool neverUsedBefore = true;
@@ -786,6 +787,13 @@ bool doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 		else if (args.ArgC() > 1 and args[1] == "stop") {
 			string arg = args[2];
 			
+			float delta = g_Engine.time - state.lastLaggyCmd;
+			if (delta < 1 and delta >= 0) {
+				g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "Wait a second before using that command.\n");
+				return true;
+			}
+			state.lastLaggyCmd = g_Engine.time;
+			
 			if (state.channel == -1) {
 				g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] You must be in a radio channel to use this command.\n");
 				return true;
@@ -816,6 +824,13 @@ bool doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 		else if (args.ArgC() > 2 and args[1] == "name") {
 			string newName = args[2];
 			
+			float delta = g_Engine.time - state.lastLaggyCmd;
+			if (delta < 1 and delta >= 0) {
+				g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "Wait a second before using that command.\n");
+				return true;
+			}
+			state.lastLaggyCmd = g_Engine.time;
+			
 			if (state.channel == -1) {
 				g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] You must be in a radio channel to use this command.\n");
 				return true;
@@ -836,6 +851,13 @@ bool doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] Reliable packets " + (state.reliablePackets ? "enabled" : "disabled") + ".\n");
 		}
 		else if (args.ArgC() > 1 and args[1] == "list") {
+			float delta = g_Engine.time - state.lastLaggyCmd;
+			if (delta < 1 and delta >= 0) {
+				g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "Wait a second before using that command.\n");
+				return true;
+			}
+			state.lastLaggyCmd = g_Engine.time;
+			
 			for (uint i = 0; i < g_channels.size(); i++) {
 				Channel@ chan = g_channels[i];
 				array<CBasePlayer@> listeners = chan.getChannelListeners();
@@ -899,6 +921,13 @@ bool doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 			return true; // hide from chat relay
 		}
 		else if (args.ArgC() > 1 and args[1] == "langs") {
+			float delta = g_Engine.time - state.lastLaggyCmd;
+			if (delta < 1 and delta >= 0) {
+				g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "Wait a second before using that command.\n");
+				return true;
+			}
+			state.lastLaggyCmd = g_Engine.time;
+			
 			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[Radio] TTS language codes sent to your console.\n");
 			
 			array<string>@ langKeys = g_langs.getKeys();
