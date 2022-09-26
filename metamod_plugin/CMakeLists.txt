@@ -6,11 +6,13 @@ set(DLL_INSTALL_PATH "svencoop/addons/metamod/dlls" CACHE FILEPATH "Where to ins
 project(Radio)
 
 set(SOURCE_FILES
-	src/meta/h_export.cpp
-	src/meta/sdk_util.cpp
-	src/meta/meta_util.h src/meta/meta_util.cpp
-	
-	src/radio.cpp
+	src/radio.h src/radio.cpp
+	src/radio_utils.h src/radio_utils.cpp
+	src/meta_utils.h src/meta_utils.cpp
+	src/meta_init.h src/meta_init.cpp
+	src/Scheduler.h src/Scheduler.cpp
+	src/TextMenu.h src/TextMenu.cpp
+	src/perf_counter.h
 )
 
 include_directories(src)

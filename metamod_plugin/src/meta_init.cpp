@@ -1,7 +1,8 @@
 // functions to making porting from angelscript to metamod easier
 #include <extdll.h>
 #include <meta_api.h>
-#include "meta_util.h"
+#include "meta_init.h"
+#include <h_export.h>
 
 // Must provide at least one of these..
 static META_FUNCTIONS gMetaFunctionTable = {
@@ -15,21 +16,8 @@ static META_FUNCTIONS gMetaFunctionTable = {
 	NULL,			// pfnGetEngineFunctions_Post	META; called after HL engine
 };
 
-// Description of plugin
-plugin_info_t Plugin_info = {
-	META_INTERFACE_VERSION,	// ifvers
-	"???",	// name
-	"1.0",	// version
-	__DATE__,	// date
-	"???",	// author
-	"https://github.com/wootguy/",	// url
-	"RADIO",	// logtag, all caps please
-	PT_ANYTIME,	// (when) loadable
-	PT_ANYPAUSE,	// (when) unloadable
-};
-
 // hook tables
-enginefuncs_t g_meta_engine_hooks;
+enginefuncs_t g_engine_hooks;
 DLL_FUNCTIONS g_dll_hooks;
 
 // Global vars from metamod:
@@ -44,9 +32,9 @@ mutil_funcs_t* gpMetaUtilFuncs;		// metamod utility functions
 C_DLLEXPORT int Meta_Query(char* /*ifvers */, plugin_info_t** pPlugInfo,
 	mutil_funcs_t* pMetaUtilFuncs)
 {
-	memset(&g_meta_engine_hooks, 0, sizeof(enginefuncs_t));
+	memset(&g_engine_hooks, 0, sizeof(enginefuncs_t));
 	memset(&g_dll_hooks, 0, sizeof(DLL_FUNCTIONS));
-	PluginInit(&Plugin_info);
+	
 	// Give metamod our plugin_info struct
 	*pPlugInfo = &Plugin_info;
 	// Get metamod utility function table.
@@ -74,6 +62,9 @@ C_DLLEXPORT int Meta_Attach(PLUG_LOADTIME /* now */,
 	}
 	memcpy(pFunctionTable, &gMetaFunctionTable, sizeof(META_FUNCTIONS));
 	gpGamedllFuncs = pGamedllFuncs;
+
+	PluginInit();
+
 	return(TRUE);
 }
 
@@ -83,6 +74,7 @@ C_DLLEXPORT int Meta_Attach(PLUG_LOADTIME /* now */,
 C_DLLEXPORT int Meta_Detach(PLUG_LOADTIME /* now */,
 	PL_UNLOAD_REASON /* reason */)
 {
+	PluginExit();
 	return(TRUE);
 }
 
@@ -114,7 +106,39 @@ C_DLLEXPORT int GetEngineFunctions(enginefuncs_t* pengfuncsFromEngine, int* inte
 		*interfaceVersion = ENGINE_INTERFACE_VERSION;
 		return(FALSE);
 	}
-	memcpy(pengfuncsFromEngine, &g_meta_engine_hooks, sizeof(enginefuncs_t));
+	memcpy(pengfuncsFromEngine, &g_engine_hooks, sizeof(enginefuncs_t));
 	return(TRUE);
 }
 
+//=========================================================
+// UTIL_LogPrintf - Prints a logged message to console.
+// Preceded by LOG: ( timestamp ) < message >
+//=========================================================
+void UTIL_LogPrintf(char* fmt, ...)
+{
+	va_list			argptr;
+	static char		string[1024];
+
+	va_start(argptr, fmt);
+	vsnprintf_s(string, sizeof(string), fmt, argptr);
+	va_end(argptr);
+
+	// Print to server console
+	ALERT(at_logged, "%s", string);
+}
+
+
+// From SDK dlls/h_export.cpp:
+
+//! Holds engine functionality callbacks
+enginefuncs_t g_engfuncs;
+globalvars_t* gpGlobals;
+
+// Receive engine function table from engine.
+// This appears to be the _first_ DLL routine called by the engine, so we
+// do some setup operations here.
+void WINAPI GiveFnptrsToDll(enginefuncs_t* pengfuncsFromEngine, globalvars_t* pGlobals)
+{
+	memcpy(&g_engfuncs, pengfuncsFromEngine, sizeof(enginefuncs_t));
+	gpGlobals = pGlobals;
+}

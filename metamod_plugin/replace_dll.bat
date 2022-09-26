@@ -6,3 +6,5 @@ if exist Radio_old.dll (
 if exist Radio.dll (
     rename Radio.dll Radio_old.dll 
 )
+
+exit /b 0
