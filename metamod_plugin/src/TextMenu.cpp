@@ -1,5 +1,6 @@
 #include "TextMenu.h"
 #include "meta_utils.h"
+#include "radio_utils.h"
 
 TextMenu g_textMenus[MAX_PLAYERS];
 
@@ -15,17 +16,21 @@ void TextMenuMessageBeginHook(int msg_dest, int msg_type, const float* pOrigin, 
 }
 
 // handle player selections
-void TextMenuClientCommandHook(edict_t* pEntity) {
+bool TextMenuClientCommandHook(edict_t* pEntity) {
 	if (toLowerCase(CMD_ARGV(0)) == "menuselect") {
 		int selection = atoi(CMD_ARGV(1)) - 1;
 		if (selection < 0 || selection >= MAX_MENU_OPTIONS) {
-			return;
+			return true;
 		}
 
 		for (int i = 0; i < MAX_PLAYERS; i++) {
 			g_textMenus[i].handleMenuselectCmd(pEntity, selection);
 		}
+
+		return true;
 	}
+
+	return false;
 }
 
 TextMenu& initMenuForPlayer(edict_t* player, TextMenuCallback callback) {
@@ -44,9 +49,11 @@ void TextMenu::init(TextMenuCallback callback) {
 	numOptions = 0;
 
 	for (int i = 0; i < MAX_MENU_OPTIONS-1; i++) {
-		options[i] = "";
+		options[i].displayText = "";
+		options[i].data = "";
 	}
-	options[MAX_MENU_OPTIONS - 1] = "exit";
+	TextMenuItem exitItem = { "Exit", "exit" };
+	options[MAX_MENU_OPTIONS - 1] = exitItem;
 
 	this->callback = callback;
 }
@@ -84,8 +91,8 @@ void TextMenu::handleMenuselectCmd(edict_t* pEntity, int selection) {
 	int playerbit = PLAYER_BIT(pEntity);
 
 	if (viewers & playerbit) {
-		if (callback && selection < numOptions) {
-			callback(pEntity, selection, options[selection]);
+		if (callback && selection < numOptions && isValidPlayer(pEntity)) {
+			callback(this, pEntity, selection, options[selection]);
 		}
 	}
 	else {
@@ -93,28 +100,29 @@ void TextMenu::handleMenuselectCmd(edict_t* pEntity, int selection) {
 	}
 }
 
-void TextMenu::setTitle(string title) {
+void TextMenu::SetTitle(string title) {
 	this->title = title;
 }
 
-void TextMenu::addOption(string text) {
+void TextMenu::AddItem(string displayText, string optionData) {
 	if (numOptions >= MAX_MENU_OPTIONS) {
-		println("Maximum menu options reached! Failed to add: %s", text.c_str());
+		println("Maximum menu options reached! Failed to add: %s", optionData.c_str());
 		return;
 	}
 
-	options[numOptions] = text;
+	TextMenuItem item = { displayText, optionData };
+	options[numOptions] = item;
 
 	numOptions++;
 }
 
-void TextMenu::openMenu(edict_t* player, int8_t duration) {
+void TextMenu::Open(int8_t duration, int8_t page, edict_t* player) {
 	string menuText = title + "\n\n";
 
 	uint16_t validSlots = (1 << 9); // exit option always valid
 
 	for (int i = 0; i < numOptions; i++) {
-		menuText += to_string(i+1) + ": " + options[i] + "\n";
+		menuText += to_string(i+1) + ": " + options[i].displayText + "\n";
 		validSlots |= (1 << i);
 	}
 

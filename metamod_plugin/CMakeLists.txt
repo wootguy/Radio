@@ -7,12 +7,15 @@ project(Radio)
 
 set(SOURCE_FILES
 	src/radio.h src/radio.cpp
+	src/Channel.h src/Channel.cpp
+	src/menus.h src/menus.cpp
+	src/FakeMic.h src/FakeMic.cpp
 	src/radio_utils.h src/radio_utils.cpp
 	src/meta_utils.h src/meta_utils.cpp
 	src/meta_init.h src/meta_init.cpp
 	src/Scheduler.h src/Scheduler.cpp
 	src/TextMenu.h src/TextMenu.cpp
-	src/perf_counter.h
+	src/tts_langs.cpp
 )
 
 include_directories(src)
@@ -34,13 +37,7 @@ add_custom_command(TARGET ${PROJECT_NAME}  PRE_BUILD
     COMMAND ${CMAKE_CURRENT_LIST_DIR}/replace_dll.bat
 )
 
-if(MSVC)
-	source_group("Source Files\\meta" FILES	src/meta/dllapi.cpp
-											src/meta/engine_api.cpp
-											src/meta/h_export.cpp
-											src/meta/meta_api.cpp
-											src/meta/sdk_util.cpp)
-											
+if(MSVC)											
 	set_target_properties(${PROJECT_NAME} PROPERTIES
 					  VS_STARTUP_PROJECT ${PROJECT_NAME}
 					  VS_DEBUGGER_COMMAND "svencoop.exe"
