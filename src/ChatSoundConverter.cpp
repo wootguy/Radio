@@ -283,7 +283,19 @@ bool ChatSoundConverter::convert(ConvertJob* job) {
 	*(job->outFile) << packet << endl;
 
 	job->offset += samplesPerPacket;
-	return job->offset >= job->numSamples;
+
+	bool finished = job->offset >= job->numSamples;
+	
+	// angelscript waits for a specific file size before playing.
+	// really short sounds need some padding at the end.
+	if (finished) {
+		while (job->outFile->tellp() < 2048) {
+			*(job->outFile) << "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n";
+		}
+	}
+
+
+	return finished;
 }
 
 ConvertJob::ConvertJob(int16_t* samples, int numSamples, ofstream* outFile, SteamVoiceEncoder* encoder) {
