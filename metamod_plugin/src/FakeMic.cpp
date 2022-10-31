@@ -97,7 +97,7 @@ void load_samples() {
 }
 
 void send_notification_delay(string msg, bool chatNotNotification) {
-	for (int i = 1; i < gpGlobals->maxClients; i++) {
+	for (int i = 1; i <= gpGlobals->maxClients; i++) {
 		edict_t* plr = INDEXENT(i);
 
 		if (!isValidPlayer(plr)) {
@@ -119,7 +119,7 @@ void send_notification(string msg, bool chatNotNotification) {
 }
 
 void send_debug_message(string msg) {
-	for (int i = 1; i < gpGlobals->maxClients; i++) {
+	for (int i = 1; i <= gpGlobals->maxClients; i++) {
 		edict_t* plr = INDEXENT(i);
 
 		if (!isValidPlayer(plr)) {
@@ -422,7 +422,7 @@ void play_samples() {
 		//println("IDX " + g_radio_ent_idx + " " + g_voice_ent_idx);
 
 		if (!silentPacket) {
-			for (int i = 1; i < gpGlobals->maxClients; i++) {
+			for (int i = 1; i <= gpGlobals->maxClients; i++) {
 				edict_t* plr = INDEXENT(i);
 
 				if (!isValidPlayer(plr)) {

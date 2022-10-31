@@ -82,12 +82,19 @@ cvar_t* g_channelCount;
 
 map<string, PlayerState*> g_player_states;
 
+bool g_is_server_changing_levels = false;
+
+void ServerDeactivate() {
+	g_is_server_changing_levels = true;
+}
+
 void PluginInit() {
 	g_dll_hooks.pfnClientCommand = ClientCommand;
 	g_dll_hooks.pfnServerActivate = MapInit;
 	g_dll_hooks.pfnStartFrame = StartFrame;
 	g_dll_hooks.pfnClientPutInServer = ClientJoin;
 	g_dll_hooks.pfnClientDisconnect = ClientLeave;
+	g_dll_hooks.pfnServerDeactivate = ServerDeactivate;
 
 	g_engine_hooks.pfnMessageBegin = MessageBegin;
 	
@@ -97,7 +104,7 @@ void PluginInit() {
 	g_skipSongCooldown = RegisterCVar("radio.skipSongCooldown", "10", 10, 0);
 	g_djReserveTime = RegisterCVar("radio.djReserveTime", "240", 240, 0);
 	g_djIdleTime = RegisterCVar("radio.djIdleTime", "180", 180, 0);
-	g_maxQueue = RegisterCVar("radio.maxQueue", "8", 0, 0);
+	g_maxQueue = RegisterCVar("radio.maxQueue", "8", 8, 0);
 	g_channelCount = RegisterCVar("radio.channelCount", "1", 0, 0);
 	
 	g_channels.resize(g_channelCount->value);
@@ -146,16 +153,6 @@ void StartFrame() {
 	RETURN_META(MRES_IGNORED);
 }
 
-void logClientCommand(edict_t* pEntity) {
-	string command = CMD_ARGV(0);
-
-	for (int i = 1; i < CMD_ARGC(); i++) {
-		command += string(" ") + CMD_ARGV(i);
-	}
-
-	println("[cmd] %s: '%s'", STRING(pEntity->v.netname), command.c_str());
-}
-
 void menuCallback(edict_t* pEntity, int iSelect, string option) {
 	ClientPrint(pEntity, HUD_PRINTNOTIFY, "ZOMG CHOSE %s", option.c_str());
 }
@@ -164,8 +161,6 @@ void ClientCommand(edict_t* pEntity) {
 	TextMenuClientCommandHook(pEntity);
 
 	META_RES ret = doCommand(pEntity) ? MRES_SUPERCEDE : MRES_IGNORED;
-
-	logClientCommand(pEntity);
 
 	RETURN_META(ret);
 }
@@ -351,6 +346,8 @@ void loadChannelListeners() {
 }
 
 void MapInit(edict_t* pEdictList, int edictCount, int maxClients) {
+	g_is_server_changing_levels = false;
+
 	// Reset time-based vars
 	for (auto const& item : g_player_states)
 	{
@@ -377,6 +374,9 @@ void MapInit(edict_t* pEdictList, int edictCount, int maxClients) {
 	fprintf(file, "truncate_radio_file\n");
 	fclose(file);
 
+	// fix for listen server with 1 player
+	g_Scheduler.SetTimeout(updateSleepState, 3.0f);
+
 	RETURN_META(MRES_IGNORED);
 }
 
@@ -392,6 +392,10 @@ void ClientJoin(edict_t* pEntity) {
 }
 
 void ClientLeave(edict_t* plr) {
+	if (g_is_server_changing_levels) {
+		return;
+	}
+
 	PlayerState& state = getPlayerState(plr);
 
 	if (state.channel >= 0) {
@@ -409,7 +413,7 @@ void radioThink() {
 	for (int i = 0; i < g_channels.size(); i++) {
 		g_channels[i].think();
 	}
-	for (int i = 1; i < gpGlobals->maxClients; i++) {
+	for (int i = 1; i <= gpGlobals->maxClients; i++) {
 		edict_t* plr = INDEXENT(i);
 
 		if (!isValidPlayer(plr)) {
@@ -435,7 +439,7 @@ void updateVoiceSlotIdx() {
 	int old_voice_idx = g_voice_ent_idx;
 
 	int found = 0;
-	for (int i = 1; i < gpGlobals->maxClients; i++) {
+	for (int i = 1; i <= gpGlobals->maxClients; i++) {
 		edict_t* plr = INDEXENT(i);
 
 		if (!isValidPlayer(plr)) {
@@ -470,7 +474,7 @@ void updateVoiceSlotIdx() {
 
 		// refresh voice labels
 		println("Refresh voice labels");
-		for (int i = 1; i < gpGlobals->maxClients; i++) {
+		for (int i = 1; i <= gpGlobals->maxClients; i++) {
 			edict_t* plr = INDEXENT(i);
 
 			if (!isValidPlayer(plr)) {
@@ -491,7 +495,7 @@ void updateSleepState() {
 	g_any_radio_listeners = false;
 	int numPlayers = 0;
 
-	for (int i = 1; i < gpGlobals->maxClients; i++) {
+	for (int i = 1; i <= gpGlobals->maxClients; i++) {
 		edict_t* plr = INDEXENT(i);
 
 		if (!isValidPlayer(plr)) {

@@ -274,10 +274,9 @@ void callbackMenuEditQueue(TextMenu* menu, edict_t* plr, int itemNumber, TextMen
 
 		if (slot > 0) {
 			chan.announce(string(STRING(plr->v.netname)) + " moved up: " + chan.queue[slot].getName(false), HUD_PRINTNOTIFY);
-			Song temp;
-			memcpy(&temp, &chan.queue[slot], sizeof(Song));
-			memcpy(&chan.queue[slot], &chan.queue[slot - 1], sizeof(Song));
-			memcpy(&chan.queue[slot - 1], &temp, sizeof(Song));
+			Song temp = Song(chan.queue[slot]);
+			chan.queue[slot] = Song(chan.queue[slot - 1]);
+			chan.queue[slot - 1] = Song(temp);
 			newSlot = slot - 1;
 		}
 
@@ -289,10 +288,9 @@ void callbackMenuEditQueue(TextMenu* menu, edict_t* plr, int itemNumber, TextMen
 
 		if (slot < int(chan.queue.size()) - 1) {
 			chan.announce(string(STRING(plr->v.netname)) + " moved down: " + chan.queue[slot].getName(false), HUD_PRINTNOTIFY);
-			Song temp;
-			memcpy(&temp, &chan.queue[slot], sizeof(Song));
-			memcpy(&chan.queue[slot], &chan.queue[slot + 1], sizeof(Song));
-			memcpy(&chan.queue[slot + 1], &temp, sizeof(Song));
+			Song temp = Song(chan.queue[slot]);
+			chan.queue[slot] = Song(chan.queue[slot + 1]);
+			chan.queue[slot + 1] = Song(temp);
 			newSlot = slot + 1;
 		}
 
@@ -370,14 +368,14 @@ void callbackMenuInvite(TextMenu* menu, edict_t* plr, int itemNumber, TextMenuIt
 			return;
 		}
 
-		for (int i = 1; i < gpGlobals->maxClients; i++) {
+		for (int i = 1; i <= gpGlobals->maxClients; i++) {
 			edict_t* target = INDEXENT(i);
 
 			if (!isValidPlayer(target) || ENTINDEX(target) == ENTINDEX(plr)) {
 				continue;
 			}
 			PlayerState& targetState = getPlayerState(target);
-			int targetid = g_engfuncs.pfnGetPlayerUserId(plr);
+			int targetid = g_engfuncs.pfnGetPlayerUserId(target);
 
 			if (targetState.channel == state.channel) {
 				continue;
@@ -404,7 +402,7 @@ void callbackMenuInvite(TextMenu* menu, edict_t* plr, int itemNumber, TextMenuIt
 	else if (option.find("invite-") == 0) {
 		string targetId = option.substr(7);
 		edict_t* target = getPlayerByUniqueId(targetId);
-		int targetidnum = g_engfuncs.pfnGetPlayerUserId(plr);
+		int targetidnum = g_engfuncs.pfnGetPlayerUserId(target);
 
 		if (state.shouldInviteCooldown(plr, targetId)) {
 			g_Scheduler.SetTimeout(openMenuRadio, 0.0f, playerid);
@@ -514,7 +512,7 @@ void openMenuStopVideo(int playerid) {
 	bool isDj = dj && ENTINDEX(dj) == ENTINDEX(plr);
 
 	menu.AddItem("\\w..\\y", "main-menu");
-	menu.AddItem("\\wStop all videos\\y", "stop - all");
+	menu.AddItem("\\wStop all videos\\y", "stop-all");
 	menu.AddItem("\\wStop all videos except the first\\y", "stop-last");
 	menu.AddItem("\\wStop all videos except the last\\y", "stop-first");
 	menu.AddItem("\\wStop all videos and clear the queue\\y", "stop-and-clear-queue");
@@ -604,7 +602,7 @@ void openMenuEditQueue(int playerid, int selectedSlot) {
 				}
 			}
 
-			menu.AddItem(label, "edit-slot-" + i);
+			menu.AddItem(label, "edit-slot-" + to_string(i));
 		}
 	}
 	else {
@@ -620,9 +618,9 @@ void openMenuEditQueue(int playerid, int selectedSlot) {
 
 		menu.SetTitle(label);
 		menu.AddItem("\\wCancel\\y", "edit-queue");
-		menu.AddItem("\\wMove up\\y", "move-up-" + selectedSlot);
-		menu.AddItem("\\wMove down\\y", "move-down-" + selectedSlot);
-		menu.AddItem("\\wRemove\\y", "remove-" + selectedSlot);
+		menu.AddItem("\\wMove up\\y", "move-up-" + to_string(selectedSlot));
+		menu.AddItem("\\wMove down\\y", "move-down-" + to_string(selectedSlot));
+		menu.AddItem("\\wRemove\\y", "remove-" + to_string(selectedSlot));
 	}
 
 	menu.Open(0, 0, plr);
@@ -630,16 +628,16 @@ void openMenuEditQueue(int playerid, int selectedSlot) {
 
 void openMenuInviteRequest(int playerid, string asker, int channel) {
 	edict_t* plr = getPlayerByUserId(playerid);
-	if (!plr) {
+	if (!isValidPlayer(plr)) {
 		return;
 	}
 
 	int eidx = ENTINDEX(plr);
 	PlayerState& state = getPlayerState(plr);
-	if (state.channel < 0 || state.channel >= g_channels.size()) {
+	if (channel < 0 || channel >= g_channels.size()) {
 		return;
 	}
-	Channel& chan = g_channels[state.channel];
+	Channel& chan = g_channels[channel];
 
 	TextMenu& menu = initMenuForPlayer(plr, callbackMenuChannelSelect);
 
@@ -674,10 +672,10 @@ void openMenuSongRequest(int playerid, string asker, string songName, int channe
 	TextMenu& menu = initMenuForPlayer(plr, callbackMenuRequest);
 	menu.SetTitle("\\yRadio request from \"" + asker + "\":\n\n" + songName + "\n");
 
-	menu.AddItem("\\wPlay now\\y", "play-request:" + channelId);
-	menu.AddItem("\\wAdd to queue\\y", "queue-request:" + channelId);
-	menu.AddItem("\\wDeny request\\y", "deny-request:" + channelId);
-	menu.AddItem("\\wDisable requests\\y", "block-request:" + channelId);
+	menu.AddItem("\\wPlay now\\y", "play-request:" + to_string(channelId));
+	menu.AddItem("\\wAdd to queue\\y", "queue-request:" + to_string(channelId));
+	menu.AddItem("\\wDeny request\\y", "deny-request:" + to_string(channelId));
+	menu.AddItem("\\wDisable requests\\y", "block-request:" + to_string(channelId));
 
 	menu.Open(SONG_REQUEST_TIMEOUT, 0, plr);
 }
@@ -701,7 +699,7 @@ void openMenuInvite(int playerid) {
 	menu.AddItem("\\w..\\y", "main-menu");
 	menu.AddItem("\\rEveryone\\y", "inviteall");
 
-	for (int i = 1; i < gpGlobals->maxClients; i++) {
+	for (int i = 1; i <= gpGlobals->maxClients; i++) {
 		edict_t* target = INDEXENT(i);
 
 		if (!isValidPlayer(target) || ENTINDEX(target) == ENTINDEX(plr)) {

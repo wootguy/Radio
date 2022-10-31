@@ -12,7 +12,7 @@ void Channel::think() {
 
 		if (activeSongs[i].loadState == SONG_LOADING && g_engfuncs.pfnTime() - activeSongs[i].loadTime > SONG_START_TIMEOUT) {
 			// voice server probably loaded it so stop it
-			send_voice_server_message("Radio\\en\\100\\.stopid " + activeSongs[i].id);
+			send_voice_server_message("Radio\\en\\100\\.stopid " + to_string(activeSongs[i].id));
 
 			if (!activeSongs[i].noRestart) {
 				// attempt to restart song
@@ -218,9 +218,9 @@ void Channel::triggerPacketEvents(uint32_t packetId) {
 }
 
 string Channel::getQueueCountString() {
-	bool queueFull = int(queue.size()) > g_maxQueue->value;
+	bool queueFull = int(queue.size()) >= g_maxQueue->value;
 	char * queueColor = queueFull ? "\\r" : "\\d";
-	return UTIL_VarArgs("%s(%d / %d)", queueColor, queue.size(), g_maxQueue->value);
+	return UTIL_VarArgs("%s(%d / %d)", queueColor, queue.size(), (int)g_maxQueue->value);
 }
 
 edict_t* Channel::getDj() {
@@ -274,7 +274,7 @@ void Channel::announce(string msg, int messageType, edict_t* exclude) {
 }
 
 void Channel::advertise(string msg, int messageType) {
-	for (int i = 1; i < gpGlobals->maxClients; i++) {
+	for (int i = 1; i <= gpGlobals->maxClients; i++) {
 		edict_t* plr = INDEXENT(i);
 
 		if (!isValidPlayer(plr)) {
@@ -323,6 +323,7 @@ void Channel::cancelSong(uint32_t songId, string reason) {
 	Song* song = findSongById(songId);
 
 	if (song) {
+		bool wasLoaded = song->loadState == SONG_LOADED;
 		song->loadState = SONG_FAILED;
 
 		if (reason.length() > 0) {
@@ -330,6 +331,9 @@ void Channel::cancelSong(uint32_t songId, string reason) {
 			logln("Failed to play: " + song->path);
 			announce(reason + "\n");
 			logln(reason);
+		}
+		else if (wasLoaded) {
+				announce("Failed to resume. Skipping end of video.\n");
 		}
 		else {
 			// probably a temporary error, so try to start again
@@ -401,7 +405,7 @@ void Channel::stopMusic(edict_t* skipper, int excludeIdx, bool clearQueue) {
 			newActive.push_back(activeSongs[i]);
 			continue;
 		}
-		cmd += " " + activeSongs[i].id;
+		cmd += " " + to_string(activeSongs[i].id);
 	}
 	send_voice_server_message(cmd);
 	activeSongs = newActive;
@@ -542,7 +546,7 @@ void Channel::updateSongInfo(uint32_t songId, string title, int duration, int of
 vector<edict_t*> Channel::getChannelListeners(bool excludeVideoMuters) {
 	vector<edict_t*> listeners;
 
-	for (int i = 1; i < gpGlobals->maxClients; i++) {
+	for (int i = 1; i <= gpGlobals->maxClients; i++) {
 		edict_t* plr = INDEXENT(i);
 
 		if (!isValidPlayer(plr)) {
@@ -571,4 +575,21 @@ void Channel::listenerCommand(string cmd) {
 	for (int i = 0; i < listeners.size(); i++) {
 		clientCommand(listeners[i], cmd);
 	}
+}
+
+Song::Song(const Song& other) {
+	this->title = other.title;
+	this->artist = other.artist;
+	this->path = other.path;
+	this->lengthMillis = other.lengthMillis;
+	this->offset = other.offset;
+	this->loadState = other.loadState;
+	this->id = other.id;
+	this->requester = other.requester;
+	this->startTime = other.startTime;
+	this->isPlaying = other.isPlaying;
+	this->messageSent = other.messageSent;
+	this->noRestart = other.noRestart;
+	this->args = other.args;
+	this->loadTime = other.loadTime;
 }

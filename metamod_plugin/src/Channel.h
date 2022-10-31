@@ -24,6 +24,9 @@ struct Song {
 	string args; // playback args (time offset)
 	float loadTime; // time that song started waiting to start after loading
 
+	Song() {}
+	Song(const Song& other);
+
 	string getClippedName(int length, bool ascii);
 	string getName(bool ascii);
 	int getTimeLeft();

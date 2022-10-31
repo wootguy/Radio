@@ -38,7 +38,7 @@ string replaceString(string subject, string search, string replace)
 }
 
 edict_t* getPlayerByUniqueId(string id) {
-	for (int i = 1; i < gpGlobals->maxClients; i++) {
+	for (int i = 1; i <= gpGlobals->maxClients; i++) {
 		edict_t* ent = INDEXENT(i);
 
 		if (!ent || (ent->v.flags & FL_CLIENT) == 0) {
@@ -54,10 +54,10 @@ edict_t* getPlayerByUniqueId(string id) {
 }
 
 edict_t* getPlayerByUserId(int id) {
-	for (int i = 1; i < gpGlobals->maxClients; i++) {
+	for (int i = 1; i <= gpGlobals->maxClients; i++) {
 		edict_t* ent = INDEXENT(i);
 
-		if (!ent || (ent->v.flags & FL_CLIENT) == 0) {
+		if (!isValidPlayer(ent)) {
 			continue;
 		}
 
