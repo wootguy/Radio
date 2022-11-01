@@ -8,10 +8,14 @@ struct VoicePacket {
 	vector<string> sdata;
 	vector<uint32_t> ldata;
 	vector<uint8_t> data;
+
+	VoicePacket() {}
+	VoicePacket(const VoicePacket& other);
 };
 
 // call this every server frame
 void FakeMicThink();
-void load_samples();
 void play_samples();
-void load_packets_from_file();
+void handle_radio_message(string msg);
+
+extern ThreadSafeQueue<VoicePacket> g_voice_data_stream;

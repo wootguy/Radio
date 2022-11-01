@@ -52,8 +52,11 @@ struct Channel {
 	Song songRequest; // song to be requested
 	string requester;
 
+	Channel() {}
+	Channel(const Channel& channel) {};
+
 	vector<PacketListener> packetListeners;
-	vector<VoicePacket> packetStream;
+	ThreadSafeQueue<VoicePacket> packetStream;
 
 	void think();
 	void rename(edict_t* namer, string newName);

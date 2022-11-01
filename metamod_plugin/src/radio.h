@@ -72,6 +72,8 @@ void loadChannelListeners();
 void updateSleepState();
 bool doCommand(edict_t* plr);
 void showConsoleHelp(edict_t* plr, bool showChatMessage);
+void command_socket_thread(const char* addr);
+void voice_socket_thread(const char* addr);
 
 void send_voice_server_message(string msg);
 
@@ -95,6 +97,8 @@ extern cvar_t* g_djReserveTime;
 extern cvar_t* g_djIdleTime;
 extern cvar_t* g_maxQueue;
 extern cvar_t* g_channelCount;
+extern cvar_t* g_serverAddr;
+extern ThreadSafeQueue<string> g_commands_out;
 
 extern vector<Channel> g_channels;
 

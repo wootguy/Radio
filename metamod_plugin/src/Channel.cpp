@@ -12,7 +12,7 @@ void Channel::think() {
 
 		if (activeSongs[i].loadState == SONG_LOADING && g_engfuncs.pfnTime() - activeSongs[i].loadTime > SONG_START_TIMEOUT) {
 			// voice server probably loaded it so stop it
-			send_voice_server_message("Radio\\en\\100\\.stopid " + to_string(activeSongs[i].id));
+			send_voice_server_message(string("Radio\\en\\100\\.stopid ") + to_string(activeSongs[i].id));
 
 			if (!activeSongs[i].noRestart) {
 				// attempt to restart song
@@ -56,7 +56,7 @@ void Channel::think() {
 				vector<edict_t*> listeners = getChannelListeners();
 				for (int i = 0; i < listeners.size(); i++) {
 					//AmbientMusicRadio::toggleMapMusic(listeners[i], true);
-					println("TODO: Resume music messages\n");
+					println("TODO: Resume music messages");
 				}
 			}
 		}
@@ -219,7 +219,7 @@ void Channel::triggerPacketEvents(uint32_t packetId) {
 
 string Channel::getQueueCountString() {
 	bool queueFull = int(queue.size()) >= g_maxQueue->value;
-	char * queueColor = queueFull ? "\\r" : "\\d";
+	const char * queueColor = queueFull ? "\\r" : "\\d";
 	return UTIL_VarArgs("%s(%d / %d)", queueColor, queue.size(), (int)g_maxQueue->value);
 }
 

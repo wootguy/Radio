@@ -5,6 +5,9 @@
 #include <vector>
 #include <map>
 #include "Scheduler.h"
+#include "ThreadSafeQueue.h"
+#include <thread>
+#include <algorithm>
 
 using namespace std; // ohhh yesss
 
@@ -16,12 +19,34 @@ using namespace std; // ohhh yesss
 #define PLAYER_BIT(edt) (1 << (ENTINDEX(edt) % 32))
 
 extern Scheduler g_Scheduler;
+extern thread::id g_main_thread_id;
+extern ThreadSafeQueue<string> g_thread_prints;
+extern ThreadSafeQueue<string> g_thread_logs;
 
-#define print(fmt,...) {ALERT(at_console, (char*)string(fmt).c_str(), __VA_ARGS__);}
-#define println(fmt,...) {ALERT(at_console, (char*)string(fmt).c_str(), __VA_ARGS__); ALERT(at_console, "\n"); }
+//#define print(fmt,...) {ALERT(at_console, (char*)string(fmt).c_str(), ##__VA_ARGS__);}
 
-#define log(fmt, ...) {ALERT(at_logged, (char*)string(fmt).c_str(), __VA_ARGS__);}
-#define logln(fmt,...) {ALERT(at_logged, (char*)string(fmt).c_str(), __VA_ARGS__); ALERT(at_logged, "\n"); }
+// thread safe console printing
+#define println(fmt,...) { \
+	std::thread::id thisId = std::this_thread::get_id(); \
+	if (thisId == g_main_thread_id) { \
+		ALERT(at_console, (char*)(string(fmt) + "\n").c_str(), ##__VA_ARGS__ ); \
+	} \
+	else { \
+		g_thread_prints.enqueue(UTIL_VarArgs((char*)string(fmt).c_str(), ##__VA_ARGS__ )); \
+	} \
+}
+
+//#define log(fmt, ...) {ALERT(at_logged, (char*)string(fmt).c_str(), ##__VA_ARGS__);}
+
+#define logln(fmt,...) { \
+	std::thread::id thisId = std::this_thread::get_id(); \
+	if (thisId == g_main_thread_id) { \
+		ALERT(at_logged, (char*)(string(fmt) + "\n").c_str(), ##__VA_ARGS__ ); \
+	} \
+	else { \
+		g_thread_logs.enqueue(UTIL_VarArgs((char*)string(fmt).c_str(), ##__VA_ARGS__ )); \
+	} \
+}
 
 enum AdminLevel_t {
 	ADMIN_INIT = -1,
@@ -58,5 +83,5 @@ void ClientPrint(edict_t* client, int msg_dest, const char* msg_name, const char
 void LoadAdminList(); // call on each map change, so AdminLevel can work
 int AdminLevel(edict_t* player);
 char* UTIL_VarArgs(char* format, ...);
-uint64_t getEpochMilliszz();
-double TimeDifferencezz(uint64_t start, uint64_t end);
+uint64_t getEpochMillis();
+double TimeDifference(uint64_t start, uint64_t end);

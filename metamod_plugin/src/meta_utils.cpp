@@ -3,7 +3,7 @@
 #include <chrono>
 
 Scheduler g_Scheduler = Scheduler();
-const char* ADMIN_LIST_FILE = "admins.txt";
+const char* ADMIN_LIST_FILE = "svencoop/admins.txt";
 
 map<string, int> g_admins;
 
@@ -82,7 +82,7 @@ void ClientPrint(edict_t* client, int msg_dest, const char* msg_name, const char
 	MESSAGE_END();
 }
 
-static unsigned short FixedUnsigned16(float value, float scale)
+unsigned short FixedUnsigned16(float value, float scale)
 {
 	int output;
 
@@ -95,7 +95,7 @@ static unsigned short FixedUnsigned16(float value, float scale)
 	return (unsigned short)output;
 }
 
-static short FixedSigned16(float value, float scale)
+short FixedSigned16(float value, float scale)
 {
 	int output;
 
@@ -170,8 +170,6 @@ void LoadAdminList() {
 		return;
 	}
 
-	int channelList = -1;
-	int loadedStates = 0;
 	string line;
 	while (cgetline(file, line)) {
 		if (line.empty()) {
@@ -196,7 +194,7 @@ void LoadAdminList() {
 		g_admins[steamId] = adminLevel;
 	}
 
-	println(UTIL_VarArgs("[Radio] Loaded %d states from file", loadedStates));
+	println(UTIL_VarArgs("[Radio] Loaded %d admin(s) from file", g_admins.size()));
 
 	fclose(file);
 }

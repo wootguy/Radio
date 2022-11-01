@@ -4,95 +4,35 @@
 #include "Channel.h"
 #include <errno.h>
 
-const char * VOICE_FILE = "svencoop/scripts/plugins/store/_fromvoice.txt";
-uint32_t last_file_size = 0;
 uint32_t ideal_buffer_size = 8; // amount of packets to delay playback of. Higher = more latency + bad connection tolerance
-float sample_load_start = 0;
-float file_check_interval = 0.02f;
 
 float g_playback_start_time = 0;
 float g_ideal_next_packet_time = 0;
 int g_packet_idx = 0;
 uint16 expectedNextPacketId = 0;
 
-vector<VoicePacket> g_voice_data_stream;
+ThreadSafeQueue<VoicePacket> g_voice_data_stream;
 
 const float BUFFER_DELAY = 0.7f; // minimum time for a voice packet to reach players (seems to actually be 4x longer...)
 
-// longer than this and python might overwrite what is currently being read
-// keep this in sync with server.py
-const float MAX_SAMPLE_LOAD_TIME = 0.15f - file_check_interval;
-
-// convert lowercase hex letter to integer
-uint8_t char_to_nibble[] = {
-	0, 0, 0, 0, 0, 0, 0, 0,
-	0, 0, 0, 0, 0, 0, 0, 0,
-	0, 0, 0, 0, 0, 0, 0, 0,
-	0, 0, 0, 0, 0, 0, 0, 0,
-	0, 0, 0, 0, 0, 0, 0, 0,
-	0, 0, 0, 0, 0, 0, 0, 0,
-	0, 1, 2, 3, 4, 5, 6, 7,
-	8, 9, 0, 0, 0, 0, 0, 0,
-	0, 0, 0, 0, 0, 0, 0, 0,
-	0, 0, 0, 0, 0, 0, 0, 0,
-	0, 0, 0, 0, 0, 0, 0, 0,
-	0, 0, 0, 0, 0, 0, 0, 0,
-	0, 10, 11, 12, 13, 14, 15
-};
-const int NIBBLE_MAX = sizeof(char_to_nibble);
-
 // using postThink hook instead of g_Scheduler so that music keeps playing during game_end screen
-float g_next_load_samples = 0;
 float g_next_play_samples = 0;
 bool g_buffering_samples = false;
-bool g_fast_loading = false;
-bool g_finished_load = true;
-FILE* g_packet_in_file = NULL;
+
+VoicePacket::VoicePacket(const VoicePacket& other) {
+	this->id = other.id;
+	this->size = other.size;
+	this->sdata = other.sdata;
+	this->ldata = other.ldata;
+	this->data = other.data;
+}
 
 void FakeMicThink() {
 	float time = g_engfuncs.pfnTime();
 
-	if (g_next_load_samples != -1 && time >= g_next_load_samples) {
-		g_next_load_samples = -1;
-		load_samples();
-	}
 	if (g_next_play_samples != -1 && time >= g_next_play_samples) {
 		g_next_play_samples = -1;
 		play_samples();
-	}
-}
-
-void load_samples() {
-	if (!g_finished_load) {
-		load_packets_from_file();
-		return;
-	}
-
-	if (!g_any_radio_listeners || g_admin_pause_packets) {
-		g_next_load_samples = g_engfuncs.pfnTime() + 1.0f;
-		return;
-	}
-
-	g_packet_in_file = fopen(VOICE_FILE, "r");
-
-	if (g_packet_in_file) {
-		uint32_t fsize = getFileSize(g_packet_in_file);
-
-		if (fsize == last_file_size) {
-			g_next_load_samples = g_engfuncs.pfnTime() + file_check_interval;
-			fclose(g_packet_in_file);
-			return; // file hasn't been updated yet
-		}
-
-		sample_load_start = g_engfuncs.pfnTime();
-		last_file_size = fsize;
-		g_fast_loading = false;
-		g_finished_load = false;
-		load_packets_from_file();
-	}
-	else {
-		println(string("[FakeMic] voice file not found: ") + VOICE_FILE);
-		logln(string("[FakeMic] voice file not found: ") + VOICE_FILE);
 	}
 }
 
@@ -134,21 +74,8 @@ void send_debug_message(string msg) {
 }
 
 void send_voice_server_message(string msg) {
-	errno = 0;
-	FILE* file = fopen(voice_server_file, "a");
-
-	if (!file) {
-		string text = UTIL_VarArgs("[Radio] Failed to open: %s (%d)\n", voice_server_file, errno);
-		println(text);
-		logln(text);
-		return;
-	}
-
-	//g_engfuncs.pfnTime();
-
-	print("[VoiceServerOut] " + msg + "\n");
-	fprintf(file, (msg + "\n").c_str());
-	fclose(file);
+	println("[VoiceServerOut] " + msg);
+	g_commands_out.enqueue(msg + "\n");
 }
 
 void send_voice_server_message(edict_t* sender, string msg) {
@@ -243,139 +170,6 @@ void handle_radio_message(string msg) {
 	send_notification("[Radio] " + msg + "\n", chatNotNotify);
 }
 
-void finish_sample_load() {
-	float loadTime = g_engfuncs.pfnTime() - sample_load_start + file_check_interval + gpGlobals->frametime;
-
-	if (loadTime > MAX_SAMPLE_LOAD_TIME) {
-		ClientPrintAll(HUD_PRINTCONSOLE, UTIL_VarArgs("[Radio] Server can't load packets fast enough (%.2f / %.2f)\n", loadTime, MAX_SAMPLE_LOAD_TIME));
-	}
-
-	//println("Loaded samples from file in " + loadTime + " seconds");
-
-	fclose(g_packet_in_file);
-	g_packet_in_file = NULL;
-	g_finished_load = true;
-	load_samples();
-}
-
-void load_packets_from_file() {
-	string line;
-
-	if (!cgetline(g_packet_in_file, line) || line.empty()) {
-		finish_sample_load();
-		return;
-	}
-
-	if (line[0] == 'm') {
-		// server message, not a voice packet
-		handle_radio_message(line.substr(1));
-	}
-	else if (line[0] == 'z') {
-		// random data to change the size of the file
-	}
-	else if (line.length() > 4) {
-		char nib0 = line[0];
-		char nib1 = line[1];
-		char nib2 = line[2];
-		char nib3 = line[3];
-
-		if (nib0 >= NIBBLE_MAX || nib1 >= NIBBLE_MAX || nib2 >= NIBBLE_MAX || nib3 >= NIBBLE_MAX) {
-			logln("[FakeMic] Bad packet line: " + line + "\n");
-			finish_sample_load();
-			return;
-		}
-
-		uint16 packetId = (char_to_nibble[nib0] << 12) + (char_to_nibble[nib1] << 8) +
-			(char_to_nibble[nib2] << 4) + (char_to_nibble[nib3] << 0);
-
-		if (packetId != expectedNextPacketId) {
-			//g_PlayerFuncs.ClientPrintAll(HUD_PRINTCONSOLE, "[Radio] Expected packet " + expectedNextPacketId + " but got " + packetId + "\n");
-
-			for (int failsafe = 0; failsafe < 100 && expectedNextPacketId != packetId; failsafe++) {
-
-				for (int c = 0; c < int(g_channels.size()); c++) {
-					g_channels[c].triggerPacketEvents(expectedNextPacketId);
-				}
-
-				expectedNextPacketId += 1;
-			}
-		}
-		expectedNextPacketId = packetId + 1;
-
-		vector<string> parts = splitString(line, ":"); // packet_id : channel_1_packet : channel_2_packet : ...
-
-		if (parts.size() - 1 < g_channels.size() + 1) {
-			println("Packet streams > channel count + 1 (%d %d): %s", parts.size() - 1, g_channels.size(), line.c_str());
-			logln("[FakeMic] Bad packet stream count: " + line + "\n");
-			finish_sample_load();
-			return; // don't let packet buffer sizes get out of sync between channels
-		}
-
-		//println(line);
-
-		for (int c = 1; c < parts.size(); c++) {
-			string packetString = parts[c];
-
-			VoicePacket packet;
-			packet.id = packetId;
-
-			string sdat = "";
-
-			for (int i = 0; i < packetString.length() - 1; i += 2) {
-				uint8_t n1 = char_to_nibble[packetString[i]];
-				uint8_t n2 = char_to_nibble[packetString[i + 1]];
-				uint8_t bval = (n1 << 4) + n2;
-				packet.data.push_back(bval);
-
-				// combine into 32bit ints for faster writing later
-				if (packet.data.size() == 4) {
-					uint32 val = (packet.data[3] << 24) + (packet.data[2] << 16) + (packet.data[1] << 8) + packet.data[0];
-					packet.ldata.push_back(val);
-					packet.data.resize(0);
-				}
-
-				// combine into string for even faster writing later
-				if (bval == 0) {
-					packet.sdata.push_back(sdat);
-					packet.ldata.resize(0);
-					packet.data.resize(0);
-					sdat = "";
-				}
-				else {
-					sdat += (char)bval;
-				}
-
-				packet.size++;
-			}
-
-			if (c == parts.size() - 1) {
-				g_voice_data_stream.push_back(packet); // TTS data should always come last in steam_voice output
-			}
-			else if (c - 1 < g_channels.size()) {
-				g_channels[c - 1].packetStream.push_back(packet);
-			}
-
-			if (packetString.length() % 2 == 1) {
-				println("ODD LENGTH '%s'", packetString.c_str());
-			}
-		}
-
-	}
-
-	float loadTime = (g_engfuncs.pfnTime() - sample_load_start) + file_check_interval + gpGlobals->frametime;
-
-	if (gpGlobals->frametime > 0.025f || loadTime > MAX_SAMPLE_LOAD_TIME * 0.5f || g_fast_loading) {
-		// Send the rest of the packets now so the stream doesn't cut out.
-		g_fast_loading = true;
-		load_packets_from_file();
-	}
-	else {
-		// Try not to impact frametimes too much.
-		// The game has an annoying stutter when packets are loaded all at once.
-		g_next_load_samples = g_engfuncs.pfnTime() + 0.01f;
-	}
-}
-
 void play_samples() {
 	// all channels receive/send packets at the same time so it doesn't matter which channel is checked
 	uint32_t packetStreamSize = g_channels[0].packetStream.size();
@@ -405,20 +199,42 @@ void play_samples() {
 		int speakerEnt = g_radio_ent_idx;
 
 		if (c < ttsChannelId) {
-			packet = g_channels[c].packetStream[0];
-			g_channels[c].packetStream.erase(g_channels[c].packetStream.begin());
+			if (!g_channels[c].packetStream.dequeue(packet)) {
+				println("Missing packet for channel %d", c);
+				continue;
+			}
 			g_channels[c].triggerPacketEvents(packet.id);
 			speakerEnt = g_radio_ent_idx;
 		}
 		else {
-			packet = g_voice_data_stream[0];
-			g_voice_data_stream.erase(g_voice_data_stream.begin());
+			if (!g_voice_data_stream.dequeue(packet)) {
+				println("Missing tts packet");
+				continue;
+			}
 			speakerEnt = g_voice_ent_idx;
 		}
 
-		channelPacketSizes += UTIL_VarArgs(" %3d", packet.size);
+		// trigger packet events for lost packets
+		if (c == 0) {
+			int packetId = packet.id;
+			if (packetId != expectedNextPacketId) {
+				//g_PlayerFuncs.ClientPrintAll(HUD_PRINTCONSOLE, "[Radio] Expected packet " + expectedNextPacketId + " but got " + packetId + "\n");
 
-		bool silentPacket = packet.size < 4 && packet.data[0] == 0xff;
+				for (int failsafe = 0; failsafe < 100 && expectedNextPacketId != packetId; failsafe++) {
+
+					for (int c = 0; c < int(g_channels.size()); c++) {
+						g_channels[c].triggerPacketEvents(expectedNextPacketId);
+					}
+
+					expectedNextPacketId += 1;
+				}
+			}
+			expectedNextPacketId = packetId + 1;
+		}
+
+		channelPacketSizes += UTIL_VarArgs(" %3d", (int)packet.size);
+
+		bool silentPacket = packet.size <= 2 && packet.data[0] == 0xff;
 		//println("IDX " + g_radio_ent_idx + " " + g_voice_ent_idx);
 
 		if (!silentPacket) {

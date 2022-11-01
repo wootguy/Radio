@@ -15,11 +15,30 @@ set(SOURCE_FILES
 	src/meta_init.h src/meta_init.cpp
 	src/Scheduler.h src/Scheduler.cpp
 	src/TextMenu.h src/TextMenu.cpp
+	src/ThreadSafeQueue.h src/ThreadSafeQueue.cpp
+	src/mstream.h src/mstream.cpp
+	src/net/Packet.h src/net/Packet.cpp
+	src/net/IPV4.h src/net/IPV4.cpp
+	src/net/Socket.h
 	src/tts_langs.cpp
 )
 
+if(MSVC)
+	set(SOURCE_FILES
+		${SOURCE_FILES}
+		src/net/Socket_win.cpp
+		src/net/network_win.cpp
+	)	
+else()
+	set(SOURCE_FILES
+		${SOURCE_FILES}
+		src/net/Socket_unix.cpp
+		src/net/network_unix.cpp
+	)
+endif()
+
 include_directories(src)
-include_directories(src/meta)
+include_directories(src/net)
 include_directories(include/metamod)
 include_directories(include/hlsdk/common)
 include_directories(include/hlsdk/dlls)
@@ -32,20 +51,26 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
                       RUNTIME_OUTPUT_DIRECTORY_DEBUG "${SVEN_ROOT_PATH}/${DLL_INSTALL_PATH}"
                       RUNTIME_OUTPUT_DIRECTORY_RELEASE "${SVEN_ROOT_PATH}/${DLL_INSTALL_PATH}")
 				
-# can't overwrite dll while its loaded but it can be renamed, then you can run "meta reload <plugin>" to update it in-game				
-add_custom_command(TARGET ${PROJECT_NAME}  PRE_BUILD
-    COMMAND ${CMAKE_CURRENT_LIST_DIR}/replace_dll.bat
-)
-
 if(MSVC)											
 	set_target_properties(${PROJECT_NAME} PROPERTIES
 					  VS_STARTUP_PROJECT ${PROJECT_NAME}
 					  VS_DEBUGGER_COMMAND "svencoop.exe"
 					  VS_DEBUGGER_COMMAND_ARGUMENTS "+map stadium4 -nomsaa -nofbo -noborder -condebug"
 					  VS_DEBUGGER_WORKING_DIRECTORY "${SVEN_ROOT_PATH}")
+	
+	source_group("Header Files\\net" FILES Socket.h Packet.h IPV4.h)
+	source_group("Source Files\\net" FILES Socket_win.cpp network_win.cpp Packet.cpp IPV4.cpp) 
+					  
+	target_link_libraries(${PROJECT_NAME} WS2_32 IPHLPAPI)
+	
+	# can't overwrite dll while its loaded but it can be renamed, then you can run "meta reload <plugin>" to update it in-game				
+	add_custom_command(TARGET ${PROJECT_NAME}  PRE_BUILD
+		COMMAND ${CMAKE_CURRENT_LIST_DIR}/replace_dll.bat
+	)
 
 else()
-	set(CMAKE_CXX_FLAGS "-Wall -std=c++11")
+	target_compile_definitions(${PROJECT_NAME} PUBLIC -Dlinux)
+	set(CMAKE_CXX_FLAGS "-Wall -std=c++11 -m32")
 	set(CMAKE_CXX_FLAGS_DEBUG "-g -O0")
 	set(CMAKE_CXX_FLAGS_RELEASE "-Os -fno-exceptions -w -Wfatal-errors")
 endif()
