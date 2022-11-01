@@ -15,6 +15,10 @@ set(SOURCE_FILES
 	src/meta_init.h src/meta_init.cpp
 	src/Scheduler.h src/Scheduler.cpp
 	src/TextMenu.h src/TextMenu.cpp
+	src/PlayerState.h src/PlayerState.cpp
+	src/Song.h src/Song.cpp
+	src/network_threads.h src/network_threads.cpp
+	src/message_overrides.h src/message_overrides.cpp
 	src/ThreadSafeQueue.h src/ThreadSafeQueue.cpp
 	src/mstream.h src/mstream.cpp
 	src/net/Packet.h src/net/Packet.cpp

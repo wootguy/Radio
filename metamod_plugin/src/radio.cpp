@@ -11,6 +11,8 @@
 #include "ThreadSafeQueue.h"
 #include "mstream.h"
 #include "Socket.h"
+#include "network_threads.h"
+#include "message_overrides.h"
 
 using namespace std;
 
@@ -18,6 +20,7 @@ using namespace std;
 // - map music pausing using messages
 // - RelaySay
 // - check that urls are logged to console and log file
+// - ignore chatsounds and angelscript commands for tts
 
 // TODO:
 // - show who else is listening with music sprites or smth
@@ -62,7 +65,6 @@ plugin_info_t Plugin_info = {
 
 vector<Channel> g_channels;
 const char * channel_listener_file = "svencoop/scripts/plugins/store/radio_listeners.txt";
-const char* voice_server_file = "svencoop/scripts/plugins/store/_tovoice.txt";
 
 uint32_t g_song_id = 1;
 bool g_any_radio_listeners = false;
@@ -85,20 +87,10 @@ cvar_t* g_maxQueue;
 cvar_t* g_channelCount;
 cvar_t* g_serverAddr;
 
-ThreadSafeQueue<string> g_thread_prints;
-ThreadSafeQueue<string> g_thread_logs;
-ThreadSafeQueue<string> g_packet_input;
-ThreadSafeQueue<string> g_commands_out;
-ThreadSafeQueue<string> g_commands_in;
-thread::id g_main_thread_id;
-
-thread* g_command_socket_thread;
-thread* g_voice_socket_thread;
-
 map<string, PlayerState*> g_player_states;
 
 bool g_is_server_changing_levels = false;
-volatile bool g_plugin_exiting = false;
+
 
 void ServerDeactivate() {
 	g_is_server_changing_levels = true;
@@ -161,13 +153,7 @@ void PluginInit() {
 	LoadAdminList();
 
 	g_main_thread_id = std::this_thread::get_id();
-	g_command_socket_thread = new thread(command_socket_thread, g_serverAddr->string);
-	g_voice_socket_thread = new thread(voice_socket_thread, g_serverAddr->string);
-}
-
-void MessageBegin(int msg_dest, int msg_type, const float* pOrigin, edict_t* ed) {
-	TextMenuMessageBeginHook(msg_dest, msg_type, pOrigin, ed);
-	RETURN_META(MRES_IGNORED);
+	start_network_threads();
 }
 
 void handleThreadPrints() {
@@ -217,439 +203,13 @@ void ClientCommand(edict_t* pEntity) {
 	RETURN_META(ret);
 }
 
-bool PlayerState::shouldInviteCooldown(edict_t* plr, string id) {
-	float inviteTime = -9999;
-	if (lastInviteTime.find(id) != lastInviteTime.end()) {
-		inviteTime = lastInviteTime[id];
-	}
-
-	if (int(id.find("\\")) != -1) {
-		id = replaceString(id, "\\", "");
-	}
-	else {
-		edict_t* target = getPlayerByUniqueId(id);
-		if (target) {
-			id = STRING(target->v.netname);
-		}
-	}
-
-	return shouldCooldownGeneric(plr, inviteTime, g_inviteCooldown->value, "inviting " + id + " again");
-}
-
-bool PlayerState::shouldRequestCooldown(edict_t* plr) {
-	return shouldCooldownGeneric(plr, lastRequest, g_djSwapCooldown->value, "requesting another song");
-}
-
-bool PlayerState::shouldDjToggleCooldown(edict_t* plr) {
-	return shouldCooldownGeneric(plr, lastDjToggle, g_djSwapCooldown->value, "toggling DJ mode again");
-}
-
-bool PlayerState::shouldSongSkipCooldown(edict_t* plr) {
-	return shouldCooldownGeneric(plr, lastSongSkip, g_skipSongCooldown->value, "skipping another song");
-}
-
-bool PlayerState::shouldCooldownGeneric(edict_t* plr, float lastActionTime, int cooldownTime, string actionDesc) {
-	float delta = gpGlobals->time - lastActionTime;
-	if (delta < cooldownTime) {
-		int waitTime = int((cooldownTime - delta) + 0.99f);
-		ClientPrint(plr, HUD_PRINTTALK, (string("[Radio] Wait ") + to_string(waitTime) + " seconds before " + actionDesc + ".\n").c_str());
-		return true;
-	}
-
-	return false;
-}
-
-bool PlayerState::isRadioMusicPlaying() {
-	return channel >= 0 && g_channels[channel].activeSongs.size() > 0;
-}
-
-string Song::getClippedName(int length, bool ascii) {
-	string name = getName(ascii);
-
-	if (int(name.length()) > length) {
-		int sz = (length - 4) / 2;
-		return name.substr(0, sz) + " .. " + name.substr(name.length() - sz);
-	}
-
-	return name;
-}
-
-string Song::getName(bool ascii) {
-	string name = artist + " - " + title;
-	if (artist.length() == 0) {
-		name = title.length() > 0 ? title : path;
-	}
-
-	if (!ascii) {
-		return name;
-	}
-
-	string ascii_name = "";
-
-	for (int i = 0; i < name.length(); i++) {
-		if (name[i] >= 32 && name[i] <= 126) {
-			ascii_name += name[i];
-		}
-	}
-
-	if (ascii_name.length() == 0) {
-		ascii_name = "?";
-	}
-
-	return ascii_name;
-}
-
-int Song::getTimeLeft() {
-	int songLen = ((lengthMillis + 999) / 1000) - (offset / 1000);
-	return songLen - getTimePassed();
-}
-
-int Song::getTimePassed() {
-	if (loadState != SONG_LOADED) {
-		startTime = g_engfuncs.pfnTime();
-	}
-	int diff = g_engfuncs.pfnTime() - startTime;
-	return diff;
-}
-
-bool Song::isFinished() {
-	return loadState == SONG_FAILED || (loadState == SONG_LOADED && getTimeLeft() <= 0 && lengthMillis != 0) || loadState == SONG_FINISHED;
-}
-
 void PluginExit() {
 	g_plugin_exiting = true;
 	writeChannelListeners();
 
-	println("Waiting for threads to join");
-	g_command_socket_thread->join();
-	g_voice_socket_thread->join();
-
-	delete g_command_socket_thread;
-	delete g_voice_socket_thread;
+	stop_network_threads();
 
 	println("Plugin exit finish");
-}
-
-bool command_socket_connect(Socket& socket) {
-	while (!socket.connect(2000)) {
-		if (g_plugin_exiting) return false;
-		this_thread::sleep_for(chrono::milliseconds(1000));
-		if (g_plugin_exiting) return false;
-	}
-
-	return true;
-}
-
-void command_socket_thread(const char* addr) {
-	println("Connect TCP to: %s", addr);
-
-	Socket* commandSocket = new Socket(SOCKET_TCP | SOCKET_NONBLOCKING, IPV4(addr));
-
-	command_socket_connect(*commandSocket);
-
-	if (!g_plugin_exiting)
-		println("Command socket connected!");
-
-	uint64_t lastHeartbeat = getEpochMillis();
-	const float timeBetweenHeartbeats = 1.0f;
-
-	while (!g_plugin_exiting) {
-		uint64_t now = getEpochMillis();
-
-		if (TimeDifference(lastHeartbeat, now) > timeBetweenHeartbeats) {
-			lastHeartbeat = now;
-
-			if (!commandSocket->send("\n", 1)) {
-				println("Command socket connection broken. Reconnecting...");
-				this_thread::sleep_for(chrono::milliseconds(100));
-				delete commandSocket;
-				commandSocket = new Socket(SOCKET_TCP | SOCKET_NONBLOCKING, IPV4(addr));
-				if (!command_socket_connect(*commandSocket)) {
-					break;
-				}
-				println("Command socket reconnected");
-			}
-			else {
-				//println("Sent TCP heartbeat");
-			}
-		}
-
-		string commandOut;
-		if (g_commands_out.dequeue(commandOut)) {
-			//println("SEND SOCKET COMMAND: %s", commandOut.c_str());
-			if (!commandSocket->send(commandOut.c_str(), commandOut.size())) {
-				println("Failed to send socket command '%s'", commandOut.c_str());
-			}
-		}
-
-		Packet p;
-		if (commandSocket->recv(p)) {
-			string cmd = trimSpaces(p.getString());
-			if (cmd.size()) {
-				g_commands_in.enqueue(cmd);
-			}
-		}
-		else {
-			this_thread::sleep_for(chrono::milliseconds(200));
-		}
-	}
-
-	delete commandSocket;
-	println("TCP thread finished");
-}
-
-int buffer_max = 4;
-int buffered_buffers = 1;
-int g_packet_streams = 1;
-
-struct RecvPacket {
-	vector<VoicePacket> data;
-	bool wasReceived = false;
-	uint16_t packetId = 0;
-
-	RecvPacket() {}
-
-	RecvPacket(vector<VoicePacket> data, uint16_t packetId) {
-		this->data = data;
-		this->packetId = packetId;
-		wasReceived = true;
-	}
-
-	// constructor for packet that wasn't received
-	RecvPacket(uint16_t packetId) {
-		wasReceived = false;
-		this->packetId = packetId;
-	}
-};
-
-void send_packets_to_plugin(Socket* socket, vector<RecvPacket>& all_packets, bool force_send) {
-	if (all_packets.size() == 0)
-		return;
-
-	uint64_t now = getEpochMillis();
-	int idealBufferSize = buffer_max * buffered_buffers;
-
-	if (!force_send && all_packets.size() < idealBufferSize) {
-		return;
-	}
-	
-	int writeCount = all_packets.size();
-
-	if (all_packets.size() > idealBufferSize) {
-		writeCount = all_packets.size() - idealBufferSize;
-	}
-
-	int lost = 0;
-	for (int i = 0; i < writeCount; i++) {
-		RecvPacket& packet = all_packets[i];
-
-		if (!packet.wasReceived) {
-			lost += 1;
-
-			string dat = UTIL_VarArgs("%0.4x", packet);
-			for (int k = 0; k < g_packet_streams; k++) {
-				dat += "00";
-			}
-
-			g_packet_input.enqueue(dat);
-		}
-		else {
-			//print("Wrote %d" % len(packet));
-			for (int i = 0; i < g_channels.size() && i < packet.data.size(); i++) {
-				g_channels[i].packetStream.enqueue(packet.data[i]);
-			}
-
-			if ((int)packet.data[packet.data.size() - 1].size > 500) {
-				println("Write %d voice!!", (int)packet.data[packet.data.size() - 1].size);
-			}
-			else {
-				g_voice_data_stream.enqueue(packet.data[packet.data.size() - 1]);
-			}
-		}
-	}
-
-	all_packets.erase(all_packets.begin(), all_packets.begin() + min((int)all_packets.size(), buffer_max));
-
-	int still_missing = 0;
-	for (int i = 0; i < all_packets.size(); i++) {
-		RecvPacket& packet = all_packets[i];
-
-		if (!packet.wasReceived) {
-			socket->send(&packet.packetId, 2); // TODO: client expects big endian
-			still_missing += 1;
-			println("  Asked to resend %d", (int)packet.packetId);
-		}
-	}
-
-	if (lost > 0) {
-		println("Lost %d packets", lost);
-	}
-
-	//println("Wrote %d packets (%d lost, %d buffered, %d requested)", buffer_max, lost, all_packets.size(), still_missing);
-}
-
-void voice_socket_thread(const char* addr) {
-	println("Connect UDP to: %s", addr);
-	Socket* udp_socket = new Socket(SOCKET_UDP | SOCKET_NONBLOCKING, IPV4(addr));
-
-	uint64_t lastHeartbeat = getEpochMillis();
-	uint64_t last_packet_time = getEpochMillis();
-	int expectedPacketId = -1;
-	const float timeBetweenHeartbeats = 1.0f;
-	bool is_connected = false;
-	int g_packet_streams = 0;
-	vector<RecvPacket> all_packets;
-
-	while (!g_plugin_exiting) {
-		uint64_t now = getEpochMillis();
-
-		if (TimeDifference(lastHeartbeat, now) > timeBetweenHeartbeats) {
-			lastHeartbeat = now;
-			udp_socket->send("dere", 4);
-			//println("Sent UDP heartbeat");
-		}
-
-		float time_since_last_packet = TimeDifference(last_packet_time, now);
-		if (time_since_last_packet > 3) {
-			expectedPacketId = -1;
-			if (is_connected) {
-				g_commands_in.enqueue("Radio server is now offline.");
-				is_connected = false;
-				send_packets_to_plugin(udp_socket, all_packets, true);
-			}
-		}
-
-		Packet udp_packet;
-		for (int i = 0; i < 10; i++) {
-			if (udp_socket->recv(udp_packet)) {
-				break;
-			}
-
-			this_thread::sleep_for(chrono::milliseconds(100));
-		}
-
-		if (udp_packet.sz <= -1 || !udp_packet.data) {
-			println("No udp data");
-			continue;
-		}
-
-		last_packet_time = now;
-		if (!is_connected)
-			g_commands_in.enqueue("Radio server is online. Say .radio to use it.");
-		is_connected = true;
-
-		mstream data(udp_packet.data, udp_packet.sz);
-
-		bool is_resent = udp_packet.sz > 6 && string(data.getBuffer(), 6) == "resent";
-		if (is_resent)
-			data.skip(6);
-
-		uint16_t packetId;
-		data.read(&packetId, 2);
-
-		vector<VoicePacket> streamPackets;
-
-		g_packet_streams = 0;
-		while (!data.eom()) {
-			uint16_t streamSize;
-			data.read(&streamSize, 2);
-
-			VoicePacket packet;
-			packet.id = packetId;
-			packet.size = 0;
-
-			string sdat = "";
-
-			for (int x = 0; x < streamSize; x++) {
-				byte bval;
-				data.read(&bval, 1);
-				packet.data.push_back(bval);
-
-				// combine into 32bit ints for faster writing later
-				if (packet.data.size() == 4) {
-					uint32 val = (packet.data[3] << 24) + (packet.data[2] << 16) + (packet.data[1] << 8) + packet.data[0];
-					packet.ldata.push_back(val);
-					packet.data.resize(0);
-				}
-
-				// combine into string for even faster writing later
-				if (bval == 0) {
-					packet.sdata.push_back(sdat);
-					packet.ldata.resize(0);
-					packet.data.resize(0);
-					sdat = "";
-				}
-				else {
-					sdat += (char)bval;
-				}				
-			}
-
-			packet.size = streamSize;
-			streamPackets.push_back(packet);
-
-			g_packet_streams += 1;
-		}
-
-		if (g_packet_streams-1 < g_channels.size()) {
-			println("Packet streams < channel count + 1 (%d %d)", g_packet_streams - 1, g_channels.size());
-			logln("[FakeMic] Bad packet stream count: %d", (g_packet_streams-1));
-			continue; // don't let packet buffer sizes get out of sync between channels
-		}
-
-		//println("Got %d streams", totalStreams);
-		//println("Got %d (%d bytes) (%d buffer)", packetId, (int)data.size(), (int)all_packets.size());
-
-		if (is_resent) {
-			// got a resent packet, which we asked for earlier
-			bool recovered = false;
-			for (int idx = 0; idx < all_packets.size(); idx++) {
-				RecvPacket& packet = all_packets[idx];
-
-				if (!packet.wasReceived && packet.packetId == packetId) {
-					all_packets[idx].data = streamPackets;
-					all_packets[idx].wasReceived = true;
-					recovered = true;
-					println("  Recovered %d", packetId);
-				}
-			}
-			if (!recovered) {
-				println("  %d is too old or was recovered already", packetId)
-			}
-		}
-		else if (expectedPacketId - packetId > 100 || expectedPacketId == -1) {
-			// packet counter looped back to 0, or we just reconnected to the client
-			expectedPacketId = packetId + 1;
-			all_packets.push_back(RecvPacket(streamPackets, packetId));
-		}
-		else if (packetId > expectedPacketId) {
-			// larger counter than expected.A packet was lost or sent out of order.Ask for the missing ones.
-			println("Expected %d but got %d", expectedPacketId, packetId);
-
-			int asked = 0;
-			for (int x = expectedPacketId; x < packetId; x++) {
-				all_packets.push_back(x);
-				if (asked < 16) { // more than this means total disconnect probably.Don't waste bandwidth
-					uint16_t xId = x;
-					udp_socket->send(&xId, 2);
-				}
-				asked += 1;
-				println("  Asked to resend %d", x);
-			}
-
-			expectedPacketId = packetId + 1;
-			all_packets.push_back(RecvPacket(streamPackets, packetId));
-		}
-		else {
-			// normal packet update.Counter was incremented by 1 as expected
-			expectedPacketId = packetId + 1;
-			all_packets.push_back(RecvPacket(streamPackets, packetId));
-		}
-
-		send_packets_to_plugin(udp_socket, all_packets, false);
-	}
-
-	delete udp_socket;
-	println("UDP thread finished");
 }
 
 void writeChannelListeners() {
@@ -745,18 +305,6 @@ void MapInit(edict_t* pEdictList, int edictCount, int maxClients) {
 	for (int i = 0; i < g_channels.size(); i++) {
 		g_channels[i].lastSongRequest = 0;
 	}
-
-	FILE* file = fopen(voice_server_file, "a");
-
-	if (!file) {
-		string text = string("[Radio] Failed to open: ") + voice_server_file + "\n";
-		println(text);
-		logln(text);
-		return;
-	}
-
-	fprintf(file, "truncate_radio_file\n");
-	fclose(file);
 
 	// fix for listen server with 1 player
 	g_Scheduler.SetTimeout(updateSleepState, 3.0f);
