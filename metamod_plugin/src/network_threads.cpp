@@ -236,7 +236,7 @@ void voice_socket_thread(const char* addr) {
 		}
 
 		if (udp_packet.sz <= -1 || !udp_packet.data) {
-			println("No udp data");
+			//println("No udp data");
 			continue;
 		}
 

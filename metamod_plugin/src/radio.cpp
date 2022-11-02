@@ -90,7 +90,7 @@ cvar_t* g_serverAddr;
 map<string, PlayerState*> g_player_states;
 
 bool g_is_server_changing_levels = false;
-
+uint64_t lastMapMusicDebug = 0;
 
 void ServerDeactivate() {
 	g_is_server_changing_levels = true;
@@ -107,6 +107,16 @@ void PluginInit() {
 	g_dll_hooks.pfnServerDeactivate = ServerDeactivate;
 
 	g_engine_hooks.pfnMessageBegin = MessageBegin;
+	g_engine_hooks.pfnWriteAngle = WriteAngle;
+	g_engine_hooks.pfnWriteByte = WriteByte;
+	g_engine_hooks.pfnWriteChar = WriteChar;
+	g_engine_hooks.pfnWriteCoord = WriteCoord;
+	g_engine_hooks.pfnWriteEntity = WriteEntity;
+	g_engine_hooks.pfnWriteLong = WriteLong;
+	g_engine_hooks.pfnWriteShort = WriteShort;
+	g_engine_hooks.pfnWriteString = WriteString;
+	g_engine_hooks.pfnMessageEnd = MessageEnd;
+	g_engine_hooks_post.pfnMessageEnd = MessageEnd_post;
 	
 	g_inviteCooldown = RegisterCVar("radio.inviteCooldown", "600", 600, 0);
 	g_requestCooldown = RegisterCVar("radio.requestCooldown", "300", 300, 0);
@@ -152,6 +162,9 @@ void PluginInit() {
 
 	LoadAdminList();
 
+	if (gpGlobals->time > 3.0f)
+		loadSoundCacheFile();
+
 	g_main_thread_id = std::this_thread::get_id();
 	start_network_threads();
 }
@@ -182,11 +195,59 @@ void handleThreadPrints() {
 	
 }
 
+void mapMusicDebug() {
+	uint64_t now = getEpochMillis();
+	if (TimeDifference(lastMapMusicDebug, now) < 0.1f) {
+		return;
+	}
+	lastMapMusicDebug = now;
+
+	for (int i = 1; i <= gpGlobals->maxClients; i++) {
+		edict_t* plr = INDEXENT(i);
+
+		if (!isValidPlayer(plr)) {
+			continue;
+		}
+
+		PlayerState& state = getPlayerState(plr);
+		if (!state.isDebugging) {
+			continue;
+		}
+
+		hudtextparms_t params = { 0 };
+		params.effect = 0;
+		params.fadeinTime = 0;
+		params.fadeoutTime = 0.5f;
+		params.holdTime = 1.0f;
+		params.r1 = 255;
+		params.g1 = 255;
+		params.b1 = 255;
+
+		params.x = 0;
+		params.y = 0.2f;
+		params.channel = 1;
+
+		string msg = "Map music:";
+		for (int k = 0; k < state.activeMapMusic.size(); k++) {
+			LoopingSound& snd = state.activeMapMusic[k];
+			//const char* ent = snd.info.entindex >= 0 ? STRING(INDEXENT(snd.info.entindex)->v.targetname) : UTIL_VarArgs("%d", snd.info.entindex);
+			const char* playing = snd.isPlaying ? "playing" : "paused";
+
+			msg += UTIL_VarArgs("\n%d) %s (%s)", 
+				k+1, snd.info.getDesc(), playing);
+		}
+
+		HudMessage(plr, params, msg.c_str(), MSG_ONE_UNRELIABLE);
+	}
+}
+
 void StartFrame() {
 	g_Scheduler.Think();
 	FakeMicThink();
 
 	handleThreadPrints();
+
+	mapMusicDebug();
 
 	RETURN_META(MRES_IGNORED);
 }
@@ -289,6 +350,69 @@ void loadChannelListeners() {
 	fclose(file);
 }
 
+map<string, int> g_sound_indexes; // maps file paths to sound indexes
+map<int, string> g_index_sounds; // maps sound indexes to file paths
+map<string, int> g_sentence_indexes; // maps sentence names to sentence indexes
+string g_soundcache_folder = "svencoop/maps/soundcache/";
+
+enum parse_modes {
+	PARSE_NONE,
+	PARSE_SOUNDS,
+	PARSE_SENTENCES
+};
+
+void loadSoundCacheFile() {
+	g_sound_indexes.clear();
+	g_sentence_indexes.clear();
+
+	string soundcache_path = g_soundcache_folder + STRING(gpGlobals->mapname) + ".txt";
+	FILE* file = fopen(soundcache_path.c_str(), "r");
+	int parseMode = PARSE_NONE;
+	int idx = 0;
+
+	if (!file) {
+		println("[Radio] failed to open soundcache file: " + soundcache_path + "\n");
+		logln("[Radio] failed to open soundcache file: " + soundcache_path + "\n");
+		return;
+	}
+
+	string line;
+	while (cgetline(file, line)) {
+		if (parseMode == PARSE_NONE) {
+			if (line.find("SOUNDLIST {") == 0) {
+				parseMode = PARSE_SOUNDS;
+				continue;
+			}
+			if (line.find("SENTENCELIST {") == 0) {
+				parseMode = PARSE_SENTENCES;
+				continue;
+			}
+		}
+		else {
+			if (line.find("}") == 0) {
+				parseMode = PARSE_NONE;
+				idx = 0;
+				continue;
+			}
+
+			if (parseMode == PARSE_SOUNDS) {
+				g_sound_indexes[line] = idx;
+				g_index_sounds[idx] = line;
+			}
+			else if (parseMode == PARSE_SENTENCES) {
+				vector<string> parts = splitString(line, " ");
+				g_sentence_indexes["!" + parts[0]] = idx;
+			}
+
+			idx++;
+		}
+	}
+
+	fclose(file);
+
+	println("[Radio] Parsed %d sounds and %d sentences", (int)g_sound_indexes.size(), (int)g_sentence_indexes.size());
+}
+
 void MapInit(edict_t* pEdictList, int edictCount, int maxClients) {
 	g_is_server_changing_levels = false;
 
@@ -307,7 +431,8 @@ void MapInit(edict_t* pEdictList, int edictCount, int maxClients) {
 	}
 
 	// fix for listen server with 1 player
-	g_Scheduler.SetTimeout(updateSleepState, 3.0f);
+	g_Scheduler.SetTimeout(updateSleepState, 1.0f);
+	g_Scheduler.SetTimeout(loadSoundCacheFile, 1.0f);
 
 	RETURN_META(MRES_IGNORED);
 }
@@ -317,6 +442,7 @@ void ClientJoin(edict_t* pEntity) {
 
 	state.startedReliablePackets = false;
 	state.reliablePacketsStart = 999999;
+	state.activeMapMusic.clear();
 
 	g_Scheduler.SetTimeout(updateSleepState, 1.0f);
 
@@ -445,6 +571,38 @@ void updateSleepState() {
 
 	if (g_any_radio_listeners != old_listeners) {
 		send_voice_server_message(string("Radio\\en\\100\\") + (g_any_radio_listeners ? ".resume_packets" : ".pause_packets"));
+	}
+}
+
+void toggleMapMusic(edict_t* plr, bool enable) {
+	if (!isValidPlayer(plr)) {
+		return;
+	}
+
+	PlayerState& state = getPlayerState(plr);
+
+	println("Toggle %d map musics for %s state %d", (int)state.activeMapMusic.size(), STRING(plr->v.netname), (int)enable);
+	
+	for (int i = 0; i < state.activeMapMusic.size(); i++) {
+		if (enable) {
+			state.activeMapMusic[i].resume(plr);
+		}
+		else {
+			state.activeMapMusic[i].pause(plr);
+		}
+	}
+
+	if (!enable) {
+		clientCommand(plr, "mp3 stop");
+	}
+
+	if (state.activeMapMusic.size()) {
+		if (enable) {
+			ClientPrint(plr, HUD_PRINTNOTIFY, "[Radio] Unmuted map music.\n");
+		}
+		else {
+			ClientPrint(plr, HUD_PRINTNOTIFY, "[Radio] Muted map music.\n");
+		}
 	}
 }
 

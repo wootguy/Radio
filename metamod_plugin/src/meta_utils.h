@@ -76,8 +76,8 @@ string toLowerCase(string str);
 
 cvar_t* RegisterCVar(char* name, char* strDefaultValue, int intDefaultValue, int flags);
 
-void HudMessageAll(const hudtextparms_t& textparms, const char* pMessage);
-void HudMessage(edict_t* pEntity, const hudtextparms_t& textparms, const char* pMessage);
+void HudMessageAll(const hudtextparms_t& textparms, const char* pMessage, int dest = -1);
+void HudMessage(edict_t* pEntity, const hudtextparms_t& textparms, const char* pMessage, int dest = -1); 
 void ClientPrintAll(int msg_dest, const char* msg_name, const char* param1 = NULL, const char* param2 = NULL, const char* param3 = NULL, const char* param4 = NULL);
 void ClientPrint(edict_t* client, int msg_dest, const char* msg_name, const char* param1 = NULL, const char* param2 = NULL, const char* param3 = NULL, const char* param4 = NULL);
 void LoadAdminList(); // call on each map change, so AdminLevel can work

@@ -111,9 +111,11 @@ short FixedSigned16(float value, float scale)
 }
 
 // modified to not use CBaseEntity or loop through players to send individual messages
-void HudMessage(edict_t* pEntity, const hudtextparms_t& textparms, const char* pMessage)
+void HudMessage(edict_t* pEntity, const hudtextparms_t& textparms, const char* pMessage, int dest)
 {
-	int dest = pEntity ? MSG_ONE : MSG_ALL;
+	if (dest == -1) {
+		dest = pEntity ? MSG_ONE : MSG_ALL;
+	}
 
 	MESSAGE_BEGIN(dest, SVC_TEMPENTITY, NULL, pEntity);
 	WRITE_BYTE(TE_TEXTMESSAGE);
@@ -154,9 +156,9 @@ void HudMessage(edict_t* pEntity, const hudtextparms_t& textparms, const char* p
 	MESSAGE_END();
 }
 
-void HudMessageAll(const hudtextparms_t& textparms, const char* pMessage)
+void HudMessageAll(const hudtextparms_t& textparms, const char* pMessage, int dest)
 {
-	HudMessage(NULL, textparms, pMessage);
+	HudMessage(NULL, textparms, pMessage, dest);
 }
 
 void LoadAdminList() {

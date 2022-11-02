@@ -1,5 +1,6 @@
 #pragma once
 #include "meta_utils.h"
+#include "message_overrides.h"
 #include <map>
 #include <string>
 
@@ -13,6 +14,7 @@ enum MUTE_MODE {
 struct PlayerState {
 	int channel = -1;
 	map<string, float> lastInviteTime; // for invite cooldowns per player and for \everyone
+	vector<LoopingSound> activeMapMusic;
 	float lastRequest = -999; // for request cooldowns
 	float lastDjToggle = -999; // for cooldown
 	float lastSongSkip = -999; // for cooldown

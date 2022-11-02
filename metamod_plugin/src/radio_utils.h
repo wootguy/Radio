@@ -1,6 +1,8 @@
 #pragma once
 #include "radio.h"
 
+extern map<string, uint64_t> g_sound_durations; // maps a sound file to its duration in milliseconds
+
 // return existing state or create a new one
 PlayerState& getPlayerState(edict_t* plr);
 
@@ -26,3 +28,12 @@ string formatTime(int totalSeconds);
 vector<string> splitString(string str, const char* delimitters);
 
 uint32_t getFileSize(FILE* file);
+
+float clampf(float val, float min, float max);
+
+int clamp(int val, int min, int max);
+
+// get the length of a sound file in milliseconds (only .wav supported)
+uint64_t getSoundDuration(string fpath);
+
+string getFileExtension(string fpath);

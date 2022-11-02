@@ -55,8 +55,7 @@ void Channel::think() {
 
 				vector<edict_t*> listeners = getChannelListeners();
 				for (int i = 0; i < listeners.size(); i++) {
-					//AmbientMusicRadio::toggleMapMusic(listeners[i], true);
-					println("TODO: Resume music messages");
+					toggleMapMusic(listeners[i], true);
 				}
 			}
 		}
@@ -315,7 +314,7 @@ void Channel::playSong(Song song) {
 
 	vector<edict_t*> listeners = getChannelListeners();
 	for (int i = 0; i < listeners.size(); i++) {
-		//AmbientMusicRadio::toggleMapMusic(listeners[i], false);
+		toggleMapMusic(listeners[i], false);
 	}
 }
 
@@ -449,7 +448,7 @@ void Channel::stopMusic(edict_t* skipper, int excludeIdx, bool clearQueue) {
 
 	vector<edict_t*> listeners = getChannelListeners();
 	for (int i = 0; i < listeners.size(); i++) {
-		//AmbientMusicRadio::toggleMapMusic(listeners[i], true);
+		toggleMapMusic(listeners[i], true);
 	}
 }
 

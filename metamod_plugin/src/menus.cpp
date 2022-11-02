@@ -43,7 +43,7 @@ void callbackMenuRadio(TextMenu* menu, edict_t* plr, int itemNumber, TextMenuIte
 
 		HudMessage(plr, params, "");
 
-		//AmbientMusicRadio::toggleMapMusic(plr, true);
+		toggleMapMusic(plr, true);
 	}
 	else if (option == "main-menu") {
 		g_Scheduler.SetTimeout(openMenuRadio, 0.0f, playerid);
@@ -158,7 +158,7 @@ void joinRadioChannel(edict_t* plr, int newChannel) {
 
 	clientCommand(plr, "stopsound");
 
-	//AmbientMusicRadio::toggleMapMusic(plr, !musicIsPlaying);
+	toggleMapMusic(plr, !musicIsPlaying);
 
 	g_channels[state.channel].announce(string(STRING(plr->v.netname)) + " tuned in.", HUD_PRINTNOTIFY, plr);
 	updateSleepState();

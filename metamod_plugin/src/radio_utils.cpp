@@ -1,6 +1,76 @@
 #include "radio_utils.h"
 #include "radio.h"
 
+map<string, uint64_t> g_sound_durations;
+
+typedef struct WAV_HEADER {
+	/* RIFF Chunk Descriptor */
+	uint8_t RIFF[4] = { 'R', 'I', 'F', 'F' }; // RIFF Header Magic header
+	uint32_t ChunkSize;                     // RIFF Chunk Size
+	uint8_t WAVE[4] = { 'W', 'A', 'V', 'E' }; // WAVE Header
+	/* "fmt" sub-chunk */
+	uint8_t fmt[4] = { 'f', 'm', 't', ' ' }; // FMT header
+	uint32_t Subchunk1Size = 16;           // Size of the fmt chunk
+	uint16_t AudioFormat = 1; // Audio format 1=PCM,6=mulaw,7=alaw,     257=IBM
+								// Mu-Law, 258=IBM A-Law, 259=ADPCM
+	uint16_t NumOfChan = 1;   // Number of channels 1=Mono 2=Sterio
+	uint32_t SamplesPerSec = 12000;   // Sampling Frequency in Hz
+	uint32_t bytesPerSec = 12000 * 2; // bytes per second
+	uint16_t blockAlign = 2;          // 2=16-bit mono, 4=16-bit stereo
+	uint16_t bitsPerSample = 16;      // Number of bits per sample
+	/* "data" sub-chunk */
+	uint8_t Subchunk2ID[4] = { 'd', 'a', 't', 'a' }; // "data"  string
+	uint32_t Subchunk2Size;                        // Sampled data length
+} wav_hdr;
+
+uint64_t getSoundDuration(string fpath) {
+	if (g_sound_durations.find(fpath) != g_sound_durations.end()) {
+		return g_sound_durations[fpath];
+	}
+
+	uint64_t duration = 0;
+
+	string ext = toLowerCase(getFileExtension(fpath));
+
+	FILE* file = fopen((string("svencoop_addon/sound/") + fpath).c_str(), "rb");
+
+	if (!file) {
+		file = fopen((string("svencoop/sound/") + fpath).c_str(), "rb");
+	}
+	if (!file) {
+		file = fopen((string("svencoop_downloads/sound/") + fpath).c_str(), "rb");
+	}
+
+	if (!file) {
+		println("[Radio] Failed to check file duration: %s", fpath.c_str());
+	}
+	else if(ext == "wav") {
+		WAV_HEADER header;
+		if (fread(&header, sizeof(WAV_HEADER), 1, file) == 1) {
+			int numSamples = header.Subchunk2Size / (header.NumOfChan * (header.bitsPerSample / 8));
+			duration = numSamples / (header.SamplesPerSec / 1000);
+		}
+	}
+	else {
+		println("[Radio] Don't know how to check duration of %s file", ext.c_str());
+	}
+
+	if (file)
+		fclose(file);
+
+	g_sound_durations[fpath] = duration;
+	return duration;
+}
+
+string getFileExtension(string fpath) {
+	int dot = fpath.find_last_of(".");
+	if (dot != -1 && dot < fpath.size()-1) {
+		return fpath.substr(dot + 1);
+	}
+
+	return "";
+}
+
 PlayerState& getPlayerState(edict_t* plr) {
 	string steamId = getPlayerUniqueId(plr);
 
@@ -75,7 +145,7 @@ bool isValidPlayer(edict_t* plr) {
 
 void clientCommand(edict_t* plr, string cmd, int destType) {
 	MESSAGE_BEGIN(destType, 9, NULL, plr);
-	WRITE_STRING(UTIL_VarArgs(";%s;", cmd));
+	WRITE_STRING(UTIL_VarArgs(";%s;", cmd.c_str()));
 	MESSAGE_END();
 }
 
@@ -116,7 +186,7 @@ string formatTime(int totalSeconds) {
 	int seconds = totalSeconds % 60;
 
 	if (hours > 0) {
-		return UTIL_VarArgs("%d:02d:%02d", hours, minutes, seconds);
+		return UTIL_VarArgs("%d:%02d:%02d", hours, minutes, seconds);
 	}
 	else {
 		return UTIL_VarArgs("%d:%02d", minutes, seconds);
@@ -150,4 +220,24 @@ uint32_t getFileSize(FILE* file) {
 	uint32_t size = ftell(file); // get current file pointer
 	fseek(file, 0, SEEK_SET);
 	return size;
+}
+
+float clampf(float val, float min, float max) {
+	if (val > max) {
+		return max;
+	}
+	else if (val < min) {
+		return min;
+	}
+	return val;
+}
+
+int clamp(int val, int min, int max) {
+	if (val > max) {
+		return max;
+	}
+	else if (val < min) {
+		return min;
+	}
+	return val;
 }

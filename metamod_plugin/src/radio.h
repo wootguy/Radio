@@ -16,10 +16,14 @@ void loadChannelListeners();
 void updateSleepState();
 bool doCommand(edict_t* plr);
 void showConsoleHelp(edict_t* plr, bool showChatMessage);
+void loadSoundCacheFile();
 
 void send_voice_server_message(string msg);
 
+void toggleMapMusic(edict_t* plr, bool enable);
+
 extern map<string, PlayerState*> g_player_states;
+extern map<int, string> g_index_sounds;
 
 extern int g_radio_ent_idx;
 extern int g_voice_ent_idx;
