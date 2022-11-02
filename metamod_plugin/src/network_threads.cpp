@@ -1,7 +1,5 @@
 #include "network_threads.h"
-#include "radio.h"
 #include "Socket.h"
-#include "FakeMic.h"
 #include "Channel.h"
 #include "mstream.h"
 
@@ -21,6 +19,7 @@ thread* g_voice_socket_thread;
 volatile bool g_plugin_exiting = false;
 
 void start_network_threads() {
+	g_plugin_exiting = false;
 	g_command_socket_thread = new thread(command_socket_thread, g_serverAddr->string);
 	g_voice_socket_thread = new thread(voice_socket_thread, g_serverAddr->string);
 }
@@ -39,6 +38,8 @@ void stop_network_threads() {
 		delete g_voice_socket_thread;
 		g_voice_socket_thread = NULL;
 	}
+
+	println("Network threads joined");
 }
 
 struct RecvPacket {
@@ -62,7 +63,7 @@ struct RecvPacket {
 };
 
 bool command_socket_connect(Socket& socket) {
-	while (!socket.connect(2000)) {
+	while (!socket.connect(1000)) {
 		if (g_plugin_exiting) return false;
 		this_thread::sleep_for(chrono::milliseconds(1000));
 		if (g_plugin_exiting) return false;
@@ -160,7 +161,7 @@ void send_packets_to_plugin(Socket* socket, vector<RecvPacket>& all_packets, boo
 
 			g_packet_input.enqueue(dat);
 		}
-		else {
+		else if (!g_admin_pause_packets) {
 			//print("Wrote %d" % len(packet));
 			for (int i = 0; i < g_channels.size() && i < packet.data.size(); i++) {
 				g_channels[i].packetStream.enqueue(packet.data[i]);

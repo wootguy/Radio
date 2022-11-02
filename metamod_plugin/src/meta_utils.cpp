@@ -188,7 +188,7 @@ void LoadAdminList() {
 
 		int adminLevel = ADMIN_YES;
 
-		if (steamId[0] = '*') {
+		if (steamId[0] == '*') {
 			adminLevel = ADMIN_OWNER;
 			steamId = steamId.substr(1);
 		}

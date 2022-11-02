@@ -29,6 +29,9 @@ VoicePacket::VoicePacket(const VoicePacket& other) {
 }
 
 void FakeMicThink() {
+	if (g_admin_pause_packets) {
+		return;
+	}
 	float time = g_engfuncs.pfnTime();
 
 	if (g_next_play_samples != -1 && time >= g_next_play_samples) {

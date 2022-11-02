@@ -18,7 +18,6 @@ using namespace std;
 
 // porting todo:
 // - RelaySay
-// - check that urls are logged to console and log file
 
 // TODO:
 // - show who else is listening with music sprites or smth
@@ -71,7 +70,7 @@ bool g_any_radio_listeners = false;
 int g_radio_ent_idx = 0;
 int g_voice_ent_idx = 0;
 
-bool g_admin_pause_packets = false;
+volatile bool g_admin_pause_packets = false;
 
 float g_packet_delay = 0.05f;
 
@@ -273,7 +272,7 @@ int getAngelscriptChatFlag() {
 		const char* as_chat_flag_cvar_name = "angelscript_chat_flag";
 		g_angelscript_chat_flag = g_engfuncs.pfnCVarGetPointer(as_chat_flag_cvar_name);
 
-		if (g_angelscript_chat_flag) {
+		if (!g_angelscript_chat_flag) {
 			println("Failed to get cvar pointer for '%s'", as_chat_flag_cvar_name);
 			return ASCHAT_UNHANDLED;
 		}
@@ -296,14 +295,14 @@ void ClientCommand_post(edict_t* plr) {
 	int flag = getAngelscriptChatFlag();
 
 	if (flag == ASCHAT_HANDLED || flag == ASCHAT_HIDDEN) {
-		return;
+		RETURN_META(MRES_IGNORED);
 	}
 	
 	CommandArgs& args = g_args;
 	string lowerArg = toLowerCase(args.ArgV(0));
 
 	if (args.isConsoleCmd) {
-		return;
+		RETURN_META(MRES_IGNORED);
 	}
 
 	// at this point we know that angelscript didn't handle this chat message 	
@@ -317,6 +316,8 @@ void ClientCommand_post(edict_t* plr) {
 			send_voice_server_message(UTIL_VarArgs("%s\\%s\\%d\\%s", STRING(plr->v.netname), state.lang.c_str(), state.pitch, args.getFullCommand().c_str()));
 		}
 	}
+
+	RETURN_META(MRES_IGNORED);
 }
 
 void PluginExit() {
@@ -771,6 +772,25 @@ bool doCommand(edict_t* plr) {
 
 			g_admin_pause_packets = true;
 			ClientPrintAll(HUD_PRINTTALK, UTIL_VarArgs("[Radio] Audio paused by %s.\n", STRING(plr->v.netname)));
+		}
+		else if (args.ArgC() > 1 && args.ArgV(1) == "reconnect") {
+			if (!isAdmin) {
+				ClientPrint(plr, HUD_PRINTTALK, "[Radio] Admins only.\n");
+				return true;
+			}
+			g_plugin_exiting = true;
+			ClientPrint(plr, HUD_PRINTTALK, "[Radio] Restarting network threads.\n");
+			g_Scheduler.SetTimeout(stop_network_threads, 2.0f); // wait a while so main thread doesn't hang when joining threads
+			g_Scheduler.SetTimeout(start_network_threads, 3.0f);			
+		}
+		else if (args.ArgC() > 1 && args.ArgV(1) == "disconnect") {
+			if (!isAdmin) {
+				ClientPrint(plr, HUD_PRINTTALK, "[Radio] Admins only.\n");
+				return true;
+			}
+			g_plugin_exiting = true;
+			ClientPrint(plr, HUD_PRINTTALK, "[Radio] Disconnecting from radio server.\n");
+			g_Scheduler.SetTimeout(stop_network_threads, 2.0f); // wait a while so main thread doesn't hang when joining threads
 		}
 		else if (args.ArgC() > 1 && (args.ArgV(1) == "unpause" || args.ArgV(1) == "resume")) {
 			if (!isAdmin) {

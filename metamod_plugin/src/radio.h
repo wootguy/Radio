@@ -31,7 +31,7 @@ extern int g_voice_ent_idx;
 extern uint32_t g_song_id;
 extern map<string, const char *> g_langs;
 extern bool g_any_radio_listeners;
-extern bool g_admin_pause_packets;
+extern volatile bool g_admin_pause_packets;
 extern float g_packet_delay;
 
 extern cvar_t* g_inviteCooldown;

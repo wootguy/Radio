@@ -171,7 +171,7 @@ const char* msgDestStr(int msg_dest) {
 }
 
 void NetMessage::print() {
-	char* origin = pOrigin ? UTIL_VarArgs("Vector(%f %f %f)", pOrigin[0], pOrigin[1], pOrigin[2]) : "NULL";
+	const char* origin = pOrigin ? UTIL_VarArgs("Vector(%f %f %f)", pOrigin[0], pOrigin[1], pOrigin[2]) : "NULL";
 	const char* sed = ed ? STRING(ed->v.classname) : "NULL";
 
 	println("BEGIN(%s, %d, %s, %s)", msgDestStr(msg_dest), msg_type, origin, sed);
@@ -445,7 +445,7 @@ void LoopingSound::pause(edict_t* target) {
 	}
 
 	//println("HERE DAT PAUSE MSG");
-	pauseSnd.print();
+	//pauseSnd.print();
 
 	if (pauseSnd.channel == CHAN_AUTO) {
 		// can't know which channel was chosen to play on, so try to stop it on all channels
@@ -479,7 +479,7 @@ void LoopingSound::resume(edict_t* target) {
 	}
 
 	//println("HERE DAT RESUME MSG");
-	resumeSnd.print();
+	//resumeSnd.print();
 
 	resumeSnd.send(target);
 	isPlaying = true;
