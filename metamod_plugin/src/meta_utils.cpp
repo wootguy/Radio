@@ -230,6 +230,10 @@ char* UTIL_VarArgs(char* format, ...)
 }
 
 CommandArgs::CommandArgs() {
+	
+}
+
+void CommandArgs::loadArgs() {
 	isConsoleCmd = toLowerCase(CMD_ARGV(0)) != "say";
 
 	string argStr = CMD_ARGC() > 1 ? CMD_ARGS() : "";
@@ -246,11 +250,11 @@ CommandArgs::CommandArgs() {
 		// strip spaces
 		argStr = trimSpaces(argStr);
 
-			
+
 		if (argStr[0] == '\"') { // quoted argument (include the spaces between quotes)
 			argStr = argStr.substr(1);
 			int endQuote = argStr.find("\"");
-				
+
 			if (endQuote == -1) {
 				args.push_back(argStr);
 				break;

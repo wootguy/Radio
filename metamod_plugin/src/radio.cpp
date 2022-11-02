@@ -17,10 +17,8 @@
 using namespace std;
 
 // porting todo:
-// - map music pausing using messages
 // - RelaySay
 // - check that urls are logged to console and log file
-// - ignore chatsounds and angelscript commands for tts
 
 // TODO:
 // - show who else is listening with music sprites or smth
@@ -87,6 +85,19 @@ cvar_t* g_maxQueue;
 cvar_t* g_channelCount;
 cvar_t* g_serverAddr;
 
+enum angelscript_chat_flags {
+	ASCHAT_HANDLED, // a plugin handled the current chat message
+	ASCHAT_UNHANDLED, // chat was not handled by any angelscript plugins
+	ASCHAT_HIDDEN // a plugin wants the message to be hidden, but allowed other plugins to process the chat
+};
+
+// cvar that indicates when a chat message is handled by an angelscript plugin.
+// Defined by the AsChatFlag plugin
+cvar_t* g_angelscript_chat_flag = NULL;
+
+// client command args used across pre/post hooks
+CommandArgs g_args = CommandArgs();
+
 map<string, PlayerState*> g_player_states;
 
 bool g_is_server_changing_levels = false;
@@ -100,6 +111,7 @@ void PluginInit() {
 	g_plugin_exiting = false;
 
 	g_dll_hooks.pfnClientCommand = ClientCommand;
+	g_dll_hooks_post.pfnClientCommand = ClientCommand_post;
 	g_dll_hooks.pfnServerActivate = MapInit;
 	g_dll_hooks.pfnStartFrame = StartFrame;
 	g_dll_hooks.pfnClientPutInServer = ClientJoin;
@@ -256,12 +268,55 @@ void menuCallback(edict_t* pEntity, int iSelect, string option) {
 	ClientPrint(pEntity, HUD_PRINTNOTIFY, "ZOMG CHOSE %s", option.c_str());
 }
 
+int getAngelscriptChatFlag() {
+	if (!g_angelscript_chat_flag) {
+		const char* as_chat_flag_cvar_name = "angelscript_chat_flag";
+		g_angelscript_chat_flag = g_engfuncs.pfnCVarGetPointer(as_chat_flag_cvar_name);
+
+		if (g_angelscript_chat_flag) {
+			println("Failed to get cvar pointer for '%s'", as_chat_flag_cvar_name);
+			return ASCHAT_UNHANDLED;
+		}
+	}
+
+	return g_angelscript_chat_flag->value;
+}
+
+// called before angelscript hooks
 void ClientCommand(edict_t* pEntity) {
 	TextMenuClientCommandHook(pEntity);
 
 	META_RES ret = doCommand(pEntity) ? MRES_SUPERCEDE : MRES_IGNORED;
 
 	RETURN_META(ret);
+}
+
+// called after angelscript hooks
+void ClientCommand_post(edict_t* plr) {
+	int flag = getAngelscriptChatFlag();
+
+	if (flag == ASCHAT_HANDLED || flag == ASCHAT_HIDDEN) {
+		return;
+	}
+	
+	CommandArgs& args = g_args;
+	string lowerArg = toLowerCase(args.ArgV(0));
+
+	if (args.isConsoleCmd) {
+		return;
+	}
+
+	// at this point we know that angelscript didn't handle this chat message 	
+	// so there's little risk of sending chat commands to text-to-speech
+
+	PlayerState& state = getPlayerState(plr);
+
+	if (lowerArg.length() > 0) {
+		if (g_any_radio_listeners && lowerArg.find("https://") != 0 && lowerArg.find("http://") != 0) {
+			// speak the message
+			send_voice_server_message(UTIL_VarArgs("%s\\%s\\%d\\%s", STRING(plr->v.netname), state.lang.c_str(), state.pitch, args.getFullCommand().c_str()));
+		}
+	}
 }
 
 void PluginExit() {
@@ -662,12 +717,13 @@ bool doCommand(edict_t* plr) {
 	bool isAdmin = AdminLevel(plr) >= ADMIN_YES;
 	int playerid = g_engfuncs.pfnGetPlayerUserId(plr);
 	PlayerState& state = getPlayerState(plr);
-	CommandArgs args = CommandArgs();
+	g_args = CommandArgs();
+	CommandArgs& args = g_args;
+	args.loadArgs();
 
 	string lowerArg = toLowerCase(args.ArgV(0));
 
 	if (args.ArgC() > 0 && lowerArg == ".radio") {
-
 		if (args.ArgC() == 1) {
 			bool isEnabled = state.channel >= 0;
 
@@ -983,11 +1039,12 @@ bool doCommand(edict_t* plr) {
 		}
 	}
 	else if (!args.isConsoleCmd && lowerArg.length() > 0) {
-		if (g_any_radio_listeners && lowerArg.find("https://") != 0 && lowerArg.find("http://") != 0) {
-			// speak the message
-			send_voice_server_message(UTIL_VarArgs("%s\\%s\\%d\\%s", STRING(plr->v.netname), state.lang.c_str(), state.pitch, args.getFullCommand().c_str()));
-		}
 		if (lowerArg[0] == '~') {
+			if (g_any_radio_listeners && lowerArg.find("https://") != 0 && lowerArg.find("http://") != 0) {
+				// speak the message
+				send_voice_server_message(UTIL_VarArgs("%s\\%s\\%d\\%s", STRING(plr->v.netname), state.lang.c_str(), state.pitch, args.getFullCommand().c_str()));
+			}
+
 			ClientPrintAll(HUD_PRINTCONSOLE, (string("[Radio][TTS] ") + STRING(plr->v.netname) + ": " + args.getFullCommand() + "\n").c_str());
 			return true;
 		}

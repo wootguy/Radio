@@ -5,6 +5,7 @@
 struct Channel;
 
 void ClientCommand(edict_t* pEntity);
+void ClientCommand_post(edict_t* pEntity);
 void MapInit(edict_t* pEdictList, int edictCount, int clientMax);
 void StartFrame();
 void radioThink();

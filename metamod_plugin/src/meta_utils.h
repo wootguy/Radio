@@ -62,6 +62,8 @@ struct CommandArgs {
 	// gets current globally defined args
 	CommandArgs();
 
+	void loadArgs();
+
 	// returns empty string if idx is out of bounds
 	string ArgV(int idx);
 

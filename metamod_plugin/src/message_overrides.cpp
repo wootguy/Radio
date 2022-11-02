@@ -607,7 +607,7 @@ void hookAudioMessage(NetMessage& msg) {
 		return;
 	}
 	
-	startSnd.print();
+	//startSnd.print();
 	//msg.print();
 
 	if (startSnd.isBuggedCyclicSound() && (startSnd.flags & SND_STOP)) {
