@@ -45,7 +45,7 @@ private:
 
 	bool loadChatsound(std::string trigger, std::string fpath);
 
-	ConvertJob* createConvertJob(std::string trigger, int pitch, int volume, int steamid);
+	ConvertJob* createConvertJob(std::string trigger, int pitch, int volume, int steamid, uint64_t steamid64);
 
 	bool convert(ConvertJob* job);
 };

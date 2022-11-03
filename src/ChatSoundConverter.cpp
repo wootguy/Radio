@@ -9,8 +9,6 @@ using namespace std;
 static uint64_t steam_min = 0x0110000100000001;
 static uint64_t steam_max = 0x01100001FFFFFFFF;
 
-void wait_for_file_modify(string fpath);
-
 ChatSoundConverter::ChatSoundConverter(string commandFilePath, string chatsoundCfgPath, string svenRootPath) {
 	this->commandFilePath = commandFilePath;
 	this->chatsoundCfgPath = chatsoundCfgPath;
@@ -23,6 +21,19 @@ ChatSoundConverter::ChatSoundConverter(string commandFilePath, string chatsoundC
 	packetDelay = frameDuration * framesPerPacket; // millesconds between output packets
 	samplesPerPacket = frameSize * framesPerPacket;
 	opusBitrate = 32000; // 32khz = steam default
+}
+
+uint64_t steamid_to_steamid64(string steamid) {
+	uint64_t X = atoi(steamid.substr(8, 1).c_str());
+	uint64_t Y = atoi(steamid.substr(10).c_str());
+
+	uint64_t steam64id = 76561197960265728;
+	steam64id += Y * 2;
+	if (X == 1) {
+		steam64id += 1;
+	}
+	
+	return steam64id;
 }
 
 int ChatSoundConverter::pollCommands() {
@@ -45,14 +56,20 @@ int ChatSoundConverter::pollCommands() {
 					continue;
 				}
 				vector<string> parts = splitString(line, " ");
+
+				if (parts.size() < 5) {
+					continue;
+				}
+
 				string trigger = parts[0];
 				int pitch = atoi(parts[1].c_str());
 				int volume = atoi(parts[2].c_str());
 				int id = atoi(parts[3].c_str());
+				uint64_t steamid64 = steamid_to_steamid64(parts[4]);
 
-				printf("%s %d %d %d\n", trigger.c_str(), pitch, volume, id);
+				printf("%s %d %d %d %llu\n", trigger.c_str(), pitch, volume, id, steamid64);
 
-				ConvertJob* job = createConvertJob(trigger, pitch, volume, id);
+				ConvertJob* job = createConvertJob(trigger, pitch, volume, id, steamid64);
 
 				if (job) {
 					jobs.push_back(job);
@@ -226,7 +243,7 @@ bool ChatSoundConverter::loadChatsound(string trigger, string inputPath) {
 	return true;
 }
 
-ConvertJob* ChatSoundConverter::createConvertJob(string trigger, int pitch, int volume, int id) {
+ConvertJob* ChatSoundConverter::createConvertJob(string trigger, int pitch, int volume, int id, uint64_t steamid64) {
 	if (chatsounds_to_pcm.find(trigger) == chatsounds_to_pcm.end()) {
 		printf("Unknown chatsound trigger '%s'\n", trigger.c_str());
 		return NULL;
@@ -274,7 +291,7 @@ ConvertJob* ChatSoundConverter::createConvertJob(string trigger, int pitch, int 
 		return NULL;
 	}
 
-	SteamVoiceEncoder* encoder = new SteamVoiceEncoder(frameSize, framesPerPacket, sampleRate, opusBitrate, steam_min + id, OPUS_APPLICATION_AUDIO);
+	SteamVoiceEncoder* encoder = new SteamVoiceEncoder(frameSize, framesPerPacket, sampleRate, opusBitrate, steamid64, OPUS_APPLICATION_AUDIO);
 	return new ConvertJob(samples, numSamples, outFile, encoder);
 }
 
