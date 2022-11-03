@@ -16,9 +16,6 @@
 
 using namespace std;
 
-// porting todo:
-// - RelaySay
-
 // TODO:
 // - show who else is listening with music sprites or smth
 // - invite cooldowns should use datetime

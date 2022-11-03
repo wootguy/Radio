@@ -35,7 +35,7 @@ SocketData * Socket::createSocket(const char * addr, const char * port)
 
 	if (ret != 0)
 	{
-		println("Socket creation failed at getaddrinfo(): %d", WSAGetLastError());
+		println("[Radio] Socket creation failed at getaddrinfo(): %d", WSAGetLastError());
 		delete skt;
 		return NULL;
 	}
@@ -45,7 +45,7 @@ SocketData * Socket::createSocket(const char * addr, const char * port)
 
 	if (skt->sock == INVALID_SOCKET)
 	{
-		println("Socket creation failed at socket(): %d", WSAGetLastError());
+		println("[Radio] Socket creation failed at socket(): %d", WSAGetLastError());
 		freeaddrinfo(skt->addr);
 		delete skt;
 		return NULL;
@@ -58,7 +58,7 @@ SocketData * Socket::createSocket(const char * addr, const char * port)
 		ret = ioctlsocket(skt->sock, FIONBIO, &iMode);
 		if (ret == SOCKET_ERROR)
 		{
-			println("Failed to set socket to non-blocking: %d", WSAGetLastError());
+			println("[Radio] Failed to set socket to non-blocking: %d", WSAGetLastError());
 			freeaddrinfo(skt->addr);
 			delete skt;
 			return NULL;
@@ -84,7 +84,7 @@ Socket::Socket(int socketType, uint16_t port)
 	if (skt != NULL)
 	{
 		if (bind())
-			println("Server socket created on port %d", port);
+			println("[Radio] Server socket created on port %d", port);
 	}
 }
 
@@ -100,7 +100,7 @@ Socket::Socket(int socketType, IPV4 addr)
 		sock->dest.sin_family = AF_INET;
 		sock->dest.sin_addr.s_addr = inet_addr( addr.getHostString().c_str() );
 		sock->dest.sin_port = htons(addr.port);
-		println("Client socket created on %s:%d", inet_ntoa(sock->dest.sin_addr), (int)ntohs(sock->dest.sin_port) );
+		println("[Radio] Client socket created on %s:%d", inet_ntoa(sock->dest.sin_addr), (int)ntohs(sock->dest.sin_port) );
 	}
 }
 
@@ -120,12 +120,12 @@ bool Socket::connect(uint32_t timeout)
 {
 	if (!(socketType & SOCKET_TCP))
 	{
-		println("Can't connect() with a UDP socket.");
+		println("[Radio] Can't connect() with a UDP socket.");
 		return false;
 	}
 	if (skt == NULL)
 	{
-		println("Can't connect(). Invalid socket!");
+		println("[Radio] Can't connect(). Invalid socket!");
 		return false;
 	}
 
@@ -146,12 +146,12 @@ bool Socket::connect(uint32_t timeout)
 
 			if (ret == 0)
 			{
-				println("Socket connection timed out");
+				println("[Radio] Socket connection timed out");
 				return false;
 			}
 			else if (ret == SOCKET_ERROR)
 			{
-				println("Failed to connect socket: %d", err);
+				println("[Radio] Failed to connect socket: %d", err);
 				return false;
 			}
 		}
@@ -160,7 +160,7 @@ bool Socket::connect(uint32_t timeout)
 		}
 		else
 		{
-			println("Failed to connect socket: %d", err);
+			println("[Radio] Failed to connect socket: %d", err);
 			return false;
 		}
 	}
@@ -171,12 +171,12 @@ Socket * Socket::accept()
 {
 	if (!(socketType & SOCKET_TCP))
 	{
-		println("Can't accept() with a UDP socket.");
+		println("[Radio] Can't accept() with a UDP socket.");
 		return NULL;
 	}
 	if (skt == NULL)
 	{
-		println("Can't accept(). Invalid socket!");
+		println("[Radio] Can't accept(). Invalid socket!");
 		return NULL;
 	}
 	SocketData * sock = (SocketData*)skt;
@@ -189,7 +189,7 @@ Socket * Socket::accept()
 		if (err == WSAEWOULDBLOCK)
 			return NULL;
 
-		println("Socket accept failed: %d", err);
+		println("[Radio] Socket accept failed: %d", err);
 		return NULL;
 	}
 
@@ -208,7 +208,7 @@ bool Socket::bind()
 {
 	if (skt == NULL)
 	{
-		println("Can't bind. Invalid socket!");
+		println("[Radio] Can't bind. Invalid socket!");
 		return false;
 	}
 	SocketData * sock = (SocketData*)skt;
@@ -217,7 +217,7 @@ bool Socket::bind()
 
 	if (iResult == SOCKET_ERROR) 
 	{
-		println("Socket bind failed with error: %d", WSAGetLastError());
+		println("[Radio] Socket bind failed with error: %d", WSAGetLastError());
 		closesocket(sock->sock);
 		sock->sock = INVALID_SOCKET;
 		return false;
@@ -228,7 +228,7 @@ bool Socket::bind()
 		iResult = listen(sock->sock, SOMAXCONN);
 		if (iResult == SOCKET_ERROR)
 		{
-			println("Socket listen failed with error: %d", WSAGetLastError());
+			println("[Radio] Socket listen failed with error: %d", WSAGetLastError());
 			closesocket(sock->sock);
 			sock->sock = INVALID_SOCKET;
 			return false;
@@ -244,7 +244,7 @@ bool Socket::recv(Packet& p)
 
 	if (skt == NULL)
 	{
-		println("Can't receive. Invalid socket!");
+		println("[Radio] Can't receive. Invalid socket!");
 		return false;
 	}
 	SocketData * sock = (SocketData*)skt;
@@ -265,7 +265,7 @@ bool Socket::recv(Packet& p)
 		int err = WSAGetLastError();
 		if (err == WSAEWOULDBLOCK)
 			return false;
-		println("Socket recv failed with error: %d", err);
+		println("[Radio] Socket recv failed with error: %d", err);
 		return false;
 	}
 
@@ -289,12 +289,12 @@ bool Socket::send( const Packet& p )
 {
 	if (skt == NULL)
 	{
-		println("Can't send. Invalid socket!");
+		println("[Radio] Can't send. Invalid socket!");
 		return false;
 	}
 	if (p.sz > MAX_PACKET_SIZE)
 	{
-		println("Packet too big to send! (%d > %d)", p.sz, MAX_PACKET_SIZE);
+		println("[Radio] Packet too big to send! (%d > %d)", p.sz, MAX_PACKET_SIZE);
 		return false;
 	}
 
@@ -322,7 +322,7 @@ bool Socket::send( const Packet& p )
 		int err = WSAGetLastError();
 		if (err == WSAEWOULDBLOCK)
 			return false;
-		println("Socket send failed with error: %d", err);
+		println("[Radio] Socket send failed with error: %d", err);
 		return false;
 	}
 	sendBytes += ret + (socketType & SOCKET_TCP) ? IPV4_TCP_HEADER_SIZE : IPV4_UDP_HEADER_SIZE;

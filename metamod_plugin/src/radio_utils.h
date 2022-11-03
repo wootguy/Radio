@@ -37,3 +37,10 @@ int clamp(int val, int min, int max);
 uint64_t getSoundDuration(string fpath);
 
 string getFileExtension(string fpath);
+
+void setKeyValue(edict_t* ent, char* key, char* value);
+
+void RelaySayFailsafe(EHandle h_ent);
+
+// send a message the angelscript chat bridge plugin
+void RelaySay(string message);

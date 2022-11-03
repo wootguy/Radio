@@ -25,7 +25,7 @@ void start_network_threads() {
 }
 
 void stop_network_threads() {
-	println("Waiting for network threads to join");
+	println("[Radio] Waiting for network threads to join");
 
 	if (g_command_socket_thread) {
 		g_command_socket_thread->join();
@@ -39,7 +39,7 @@ void stop_network_threads() {
 		g_voice_socket_thread = NULL;
 	}
 
-	println("Network threads joined");
+	println("[Radio] Network threads joined");
 }
 
 struct RecvPacket {
@@ -73,14 +73,14 @@ bool command_socket_connect(Socket& socket) {
 }
 
 void command_socket_thread(const char* addr) {
-	println("Connect TCP to: %s", addr);
+	println("[Radio] Connect TCP to: %s", addr);
 
 	Socket* commandSocket = new Socket(SOCKET_TCP | SOCKET_NONBLOCKING, IPV4(addr));
 
 	command_socket_connect(*commandSocket);
 
 	if (!g_plugin_exiting)
-		println("Command socket connected!");
+		println("[Radio] Command socket connected!");
 
 	uint64_t lastHeartbeat = getEpochMillis();
 	const float timeBetweenHeartbeats = 1.0f;
@@ -92,14 +92,14 @@ void command_socket_thread(const char* addr) {
 			lastHeartbeat = now;
 
 			if (!commandSocket->send("\n", 1)) {
-				println("Command socket connection broken. Reconnecting...");
+				println("[Radio] Command socket connection broken. Reconnecting...");
 				this_thread::sleep_for(chrono::milliseconds(100));
 				delete commandSocket;
 				commandSocket = new Socket(SOCKET_TCP | SOCKET_NONBLOCKING, IPV4(addr));
 				if (!command_socket_connect(*commandSocket)) {
 					break;
 				}
-				println("Command socket reconnected");
+				println("[Radio] Command socket reconnected");
 			}
 			else {
 				//println("Sent TCP heartbeat");
@@ -110,7 +110,7 @@ void command_socket_thread(const char* addr) {
 		if (g_commands_out.dequeue(commandOut)) {
 			//println("SEND SOCKET COMMAND: %s", commandOut.c_str());
 			if (!commandSocket->send(commandOut.c_str(), commandOut.size())) {
-				println("Failed to send socket command '%s'", commandOut.c_str());
+				println("[Radio] Failed to send socket command '%s'", commandOut.c_str());
 			}
 		}
 
@@ -127,7 +127,7 @@ void command_socket_thread(const char* addr) {
 	}
 
 	delete commandSocket;
-	println("TCP thread finished");
+	println("[Radio] TCP thread finished");
 }
 
 void send_packets_to_plugin(Socket* socket, vector<RecvPacket>& all_packets, bool force_send) {
@@ -168,7 +168,7 @@ void send_packets_to_plugin(Socket* socket, vector<RecvPacket>& all_packets, boo
 			}
 
 			if ((int)packet.data[packet.data.size() - 1].size > 500) {
-				println("Write %d voice!!", (int)packet.data[packet.data.size() - 1].size);
+				println("[Radio] Write %d voice!!", (int)packet.data[packet.data.size() - 1].size);
 			}
 			else {
 				g_voice_data_stream.enqueue(packet.data[packet.data.size() - 1]);
@@ -185,19 +185,19 @@ void send_packets_to_plugin(Socket* socket, vector<RecvPacket>& all_packets, boo
 		if (!packet.wasReceived) {
 			socket->send(&packet.packetId, 2); // TODO: client expects big endian
 			still_missing += 1;
-			println("  Asked to resend %d", (int)packet.packetId);
+			println("[Radio]   Asked to resend %d", (int)packet.packetId);
 		}
 	}
 
 	if (lost > 0) {
-		println("Lost %d packets", lost);
+		println("[Radio] Lost %d packets", lost);
 	}
 
 	//println("Wrote %d packets (%d lost, %d buffered, %d requested)", buffer_max, lost, all_packets.size(), still_missing);
 }
 
 void voice_socket_thread(const char* addr) {
-	println("Connect UDP to: %s", addr);
+	println("[Radio] Connect UDP to: %s", addr);
 	Socket* udp_socket = new Socket(SOCKET_UDP | SOCKET_NONBLOCKING, IPV4(addr));
 
 	uint64_t lastHeartbeat = getEpochMillis();
@@ -299,8 +299,8 @@ void voice_socket_thread(const char* addr) {
 		}
 
 		if (g_packet_streams - 1 < g_channels.size()) {
-			println("Packet streams < channel count + 1 (%d %d)", g_packet_streams - 1, g_channels.size());
-			logln("[FakeMic] Bad packet stream count: %d", (g_packet_streams - 1));
+			println("[Radio] Packet streams < channel count + 1 (%d %d)", g_packet_streams - 1, g_channels.size());
+			logln("[Radio] Bad packet stream count: %d", (g_packet_streams - 1));
 			continue; // don't let packet buffer sizes get out of sync between channels
 		}
 
@@ -317,11 +317,11 @@ void voice_socket_thread(const char* addr) {
 					all_packets[idx].data = streamPackets;
 					all_packets[idx].wasReceived = true;
 					recovered = true;
-					println("  Recovered %d", packetId);
+					println("[Radio]   Recovered %d", packetId);
 				}
 			}
 			if (!recovered) {
-				println("  %d is too old or was recovered already", packetId)
+				println("[Radio]   %d is too old or was recovered already", packetId)
 			}
 		}
 		else if (expectedPacketId - packetId > 100 || expectedPacketId == -1) {
@@ -331,7 +331,7 @@ void voice_socket_thread(const char* addr) {
 		}
 		else if (packetId > expectedPacketId) {
 			// larger counter than expected.A packet was lost or sent out of order.Ask for the missing ones.
-			println("Expected %d but got %d", expectedPacketId, packetId);
+			println("[Radio] Expected %d but got %d", expectedPacketId, packetId);
 
 			int asked = 0;
 			for (int x = expectedPacketId; x < packetId; x++) {
@@ -341,7 +341,7 @@ void voice_socket_thread(const char* addr) {
 					udp_socket->send(&xId, 2);
 				}
 				asked += 1;
-				println("  Asked to resend %d", x);
+				println("[Radio]   Asked to resend %d", x);
 			}
 
 			expectedPacketId = packetId + 1;
@@ -357,5 +357,5 @@ void voice_socket_thread(const char* addr) {
 	}
 
 	delete udp_socket;
-	println("UDP thread finished");
+	println("[Radio] UDP thread finished");
 }

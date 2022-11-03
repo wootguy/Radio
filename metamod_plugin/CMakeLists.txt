@@ -17,6 +17,7 @@ set(SOURCE_FILES
 	src/TextMenu.h src/TextMenu.cpp
 	src/PlayerState.h src/PlayerState.cpp
 	src/Song.h src/Song.cpp
+	src/EHandle.h src/EHandle.cpp
 	src/network_threads.h src/network_threads.cpp
 	src/message_overrides.h src/message_overrides.cpp
 	src/ThreadSafeQueue.h src/ThreadSafeQueue.cpp

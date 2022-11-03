@@ -1,9 +1,11 @@
 #pragma once
 #include <vector>
 #include <string>
+#include "EHandle.h"
 
 // shitty version of the angelscript scheduler
 // every type of function that can be called must have its own methods and struct
+// TODO: copy data into a buffer and pass void* as the only param
 
 struct scheduler_void_func {
 	void (*func)(void);
@@ -16,6 +18,15 @@ struct scheduler_void_func {
 struct scheduler_int_func {
 	void (*func)(int);
 	int param;
+	float delay;
+	int callCount;
+	int maxCalls; // infinite if < 0
+	float lastCall;
+};
+
+struct scheduler_ehandle_func {
+	void (*func)(EHandle);
+	EHandle param;
 	float delay;
 	int callCount;
 	int maxCalls; // infinite if < 0
@@ -63,6 +74,9 @@ public:
 	void SetTimeout(void (*int_func) (int), float delay, int param);
 	void SetInterval(void (*int_func) (int), float delay, int maxCalls, int param);
 
+	void SetTimeout(void (*ehandle_func) (EHandle), float delay, EHandle param);
+	void SetInterval(void (*ehandle_func) (EHandle), float delay, int maxCalls, EHandle param);
+
 	void SetTimeout(void (*int_int_func) (int, int), float delay, int param1, int param2);
 	void SetInterval(void (*int_int_func) (int, int), float delay, int maxCalls, int param1, int param2);
 
@@ -77,6 +91,7 @@ public:
 private:
 	std::vector<scheduler_void_func> void_func_schedules;
 	std::vector<scheduler_int_func> int_func_schedules;
+	std::vector<scheduler_ehandle_func> ehandle_func_schedules;
 	std::vector<scheduler_int_int_func> int_int_func_schedules;
 	std::vector<scheduler_int_str_int_func> int_str_int_func_schedules;
 	std::vector<scheduler_str_bool_func> str_bool_func_schedules;

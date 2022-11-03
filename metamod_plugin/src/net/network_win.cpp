@@ -17,10 +17,10 @@ bool initNet()
 	if (WSAStartup(wsaData.wHighVersion, &wsaData) == 0)
 	{
 		uint16_t v = wsaData.wHighVersion;
-		println("Loaded winsock v%d.%d", (int)(v >> 8), (int)(v & 0xff));
+		println("[Radio] Loaded winsock v%d.%d", (int)(v >> 8), (int)(v & 0xff));
 		return true;
 	}
-	println("Winsock failed to load");
+	println("[Radio] Winsock failed to load");
 	needInit = false;
 	return false;
 }
@@ -35,7 +35,7 @@ void print_adapter(PIP_ADAPTER_ADDRESSES aa)
 	char buf[BUFSIZ];
 	memset(buf, 0, BUFSIZ);
 	WideCharToMultiByte(CP_ACP, 0, aa->FriendlyName, wcslen(aa->FriendlyName), buf, BUFSIZ, NULL, NULL);
-	println("adapter_name: %s", buf);
+	println("[Radio] adapter_name: %s", buf);
 }
 
 // https://gist.github.com/yoggy/1241986
@@ -77,14 +77,14 @@ IPV4 getLocalIP()
 			{
 				found = true;
 				pick = addr;
-				println("Lets use " + addr.getString());
+				println("[Radio] Lets use " + addr.getString());
 			}
 			else
 			{
 				if (pick.b1 == 169) // indicates that windows can't find a DCHP server to get an address from
 					pick = addr;
 				else if (addr != pick)
-					println("Multiple local addresses found! Ignoring %s", addr.getString().c_str());
+					println("[Radio] Multiple local addresses found! Ignoring %s", addr.getString().c_str());
 			}
 		}
 	}

@@ -25,7 +25,7 @@ IPV4 getLocalIP()
 
 	if (getifaddrs(&ifaddr) == -1) 
 	{
-		println("getifaddrs() failed");
+		println("[Radio] getifaddrs() failed");
 		return IPV4();
 	}
 
@@ -44,7 +44,7 @@ IPV4 getLocalIP()
 				int s = getnameinfo(ifa->ifa_addr, ((family == AF_INET) ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6)), ip_addr, sizeof(ip_addr), NULL, 0, NI_NUMERICHOST);
 				if (s != 0) 
 				{
-					println("getnameinfo() failed: %s", gai_strerror(s));
+					println("[Radio] getnameinfo() failed: %s", gai_strerror(s));
 					freeifaddrs(ifaddr);
 					return IPV4();
 				} 
@@ -56,7 +56,7 @@ IPV4 getLocalIP()
 						continue;
 					if (found)
 					{
-						println("Multiple local ip addresses found!");
+						println("[Radio] Multiple local ip addresses found!");
 						continue;
 					}
 					out = addr;

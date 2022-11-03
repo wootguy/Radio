@@ -27,6 +27,18 @@ void Scheduler::SetInterval(void (*int_func) (int), float delay, int maxCalls, i
 	int_func_schedules.push_back(schedule);
 }
 
+void Scheduler::SetTimeout(void (*ehandle_func) (EHandle), float delay, EHandle param) {
+	scheduler_ehandle_func schedule = { ehandle_func, param, delay, 0, 1, g_engfuncs.pfnTime() };
+
+	ehandle_func_schedules.push_back(schedule);
+}
+
+void Scheduler::SetInterval(void (*ehandle_func) (EHandle), float delay, int maxCalls, EHandle param) {
+	scheduler_ehandle_func schedule = { ehandle_func, param, delay, 0, maxCalls, g_engfuncs.pfnTime() };
+
+	ehandle_func_schedules.push_back(schedule);
+}
+
 void Scheduler::SetTimeout(void (*int_int_func) (int, int), float delay, int param1, int param2) {
 	scheduler_int_int_func schedule = { int_int_func, param1, param2, delay, 0, 1, g_engfuncs.pfnTime() };
 
@@ -96,6 +108,23 @@ void Scheduler::Think() {
 
 		if (sched.maxCalls >= 0 && sched.callCount >= sched.maxCalls) {
 			int_func_schedules.erase(int_func_schedules.begin() + i);
+			i--;
+		}
+	}
+
+	for (int i = 0; i < ehandle_func_schedules.size(); i++) {
+		scheduler_ehandle_func& sched = ehandle_func_schedules[i];
+
+		if (now - sched.lastCall < sched.delay) {
+			continue;
+		}
+
+		sched.func(sched.param);
+		sched.lastCall = now;
+		sched.callCount++;
+
+		if (sched.maxCalls >= 0 && sched.callCount >= sched.maxCalls) {
+			ehandle_func_schedules.erase(ehandle_func_schedules.begin() + i);
 			i--;
 		}
 	}

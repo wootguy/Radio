@@ -241,3 +241,36 @@ int clamp(int val, int min, int max) {
 	}
 	return val;
 }
+
+void setKeyValue(edict_t* ent, char* key, char* value) {
+	KeyValueData dat;
+	dat.fHandled = false;
+	dat.szClassName = (char*)STRING(ent->v.classname);
+	dat.szKeyName = key;
+	dat.szValue = value;
+	gpGamedllFuncs->dllapi_table->pfnKeyValue(ent, &dat);
+}
+
+void RelaySayFailsafe(EHandle h_ent) {
+	edict_t* ent = h_ent.getEdict();
+	if (!ent) {
+		return;
+	}
+
+	g_engfuncs.pfnRemoveEntity(ent);
+}
+
+// send a message the angelscript chat bridge plugin
+void RelaySay(string message) {
+	std::remove(message.begin(), message.end(), '\n'); // stip any newlines, ChatBridge.as takes care
+
+	println(string("[RelaySay ") + Plugin_info.name + "]: " + message + "\n");
+
+	replaceString(message, "\\", "\\\\"); // escape backslashes, or the entity fucks them up
+	
+	edict_t* ent = g_engfuncs.pfnCreateNamedEntity(MAKE_STRING("info_target"));
+	setKeyValue(ent, "$s_twlz_relay_caller", Plugin_info.name);
+	setKeyValue(ent, "$s_twlz_relay_msg", (char*)message.c_str());
+
+	g_Scheduler.SetTimeout(RelaySayFailsafe, 2.0f, EHandle(ent)); // ChatBridge.as must pick up pEntity in less than this time
+}

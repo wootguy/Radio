@@ -188,7 +188,7 @@ void Channel::triggerPacketEvents(uint32_t packetId) {
 				println(UTIL_VarArgs("packet %d triggered start of song %d", packetId, packetListeners[i].songId));
 
 				if (song->loadState != SONG_LOADED) {
-					//RelaySay(name + "|" + song.getName(false) + "|" + (getDj() !is null ? string(getDj().pev.netname) : "(none)"));
+					RelaySay(name + "|" + song->getName(false) + "|" + (getDj() ? STRING(getDj()->v.netname) : "(none)"));
 					advertise("Now playing: " + song->getName(false));
 
 					g_engfuncs.pfnServerPrint(("[Radio] " + song->getName(false) + "\n").c_str());

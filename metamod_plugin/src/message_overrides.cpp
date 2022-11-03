@@ -105,7 +105,7 @@ const char* MessageArg::getString() {
 
 void NetMessage::send(int msg_dest, edict_t* ed) {
 	if (msg_type == -1) {
-		println("Can't send unintialized net message");
+		println("[Radio] Can't send unintialized net message");
 		return;
 	}
 
@@ -552,7 +552,7 @@ void handleStartSoundMessage(edict_t* plr, NetMessage& msg, StartSoundMsg& start
 		msg.send();
 	}
 	else {
-		println("Invalid StartSnd message type %d", msgType);
+		println("[Radio] Invalid StartSnd message type %d", msgType);
 	}
 }
 
@@ -616,7 +616,7 @@ void hookAudioMessage(NetMessage& msg) {
 		// message here. Just ignore stop messages because you can't turn off a cylic sound
 		// anyway via OFF triggers so there's no point in sending stop messages for it. Triggering
 		// it again restarts the sound on the same channel. There's really no need to stop first.
-		println("Dropped cyclic stop sound message");
+		//println("[Radio] Dropped cyclic stop sound message");
 		return;
 	}
 
