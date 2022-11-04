@@ -71,15 +71,15 @@ void TextMenu::handleMenuMessage(int msg_dest, edict_t* ed) {
 	}
 
 	if ((msg_dest == MSG_ONE || msg_dest == MSG_ONE_UNRELIABLE) && ed) {
-		println("New menu opened for %s", STRING(ed->v.netname));
+		//println("New menu opened for %s", STRING(ed->v.netname));
 		viewers &= ~(PLAYER_BIT(ed));
 	}
 	else if (msg_dest == MSG_ALL || msg_dest == MSG_ALL) {
-		println("New menu opened for all players");
+		//println("New menu opened for all players");
 		viewers = 0;
 	}
 	else {
-		println("Unhandled text menu message dest: %d", msg_dest);
+		//println("Unhandled text menu message dest: %d", msg_dest);
 	}
 }
 
@@ -96,7 +96,7 @@ void TextMenu::handleMenuselectCmd(edict_t* pEntity, int selection) {
 		}
 	}
 	else {
-		println("%s is not viewing the '%s' menu", STRING(pEntity->v.netname), title.c_str());
+		//println("%s is not viewing the '%s' menu", STRING(pEntity->v.netname), title.c_str());
 	}
 }
 

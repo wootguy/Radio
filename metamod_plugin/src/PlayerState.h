@@ -23,6 +23,7 @@ struct PlayerState {
 	bool playAfterFullyLoaded = true; // toggle map music when fully loaded into the map
 	bool neverUsedBefore = true;
 	bool isDebugging = false;
+	bool isMapMusicDebug = false;
 	bool requestsAllowed = true;
 	bool blockInvites = false;
 	bool startedReliablePackets = false;

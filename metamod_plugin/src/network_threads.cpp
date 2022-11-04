@@ -19,6 +19,10 @@ thread* g_voice_socket_thread;
 volatile bool g_plugin_exiting = false;
 
 void start_network_threads() {
+	if (g_command_socket_thread || g_voice_socket_thread) {
+		println("[Radio] Can't start network threads. Already started!");
+		return;
+	}
 	g_plugin_exiting = false;
 	g_command_socket_thread = new thread(command_socket_thread, g_serverAddr->string);
 	g_voice_socket_thread = new thread(voice_socket_thread, g_serverAddr->string);

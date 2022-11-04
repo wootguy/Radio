@@ -97,6 +97,7 @@ struct StartSoundMsg {
 	void send(edict_t* target);
 	char* getDesc();
 	bool isBuggedCyclicSound();
+	bool isAmbientGeneric();
 };
 
 struct LoopingSound {

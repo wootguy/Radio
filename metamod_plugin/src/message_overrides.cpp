@@ -389,24 +389,39 @@ bool StartSoundMsg::isMusic() {
 	}
 	/*
 	if (flags & SND_FORCE_LOOP) {
-		return true; // looping ambient_generic
+		return true; // looping ambient_generic, not enough on its own. Should be global, too.
 	}
 	*/
 	if ((flags & SND_STOP)) {
-		return channel != CHAN_AUTO; // could be for music. Needed to know which sounds should be restarted
+		// could be for music. Needed to know which sounds should be restarted
+		// does no harm if a matching start message wasn't processed by this plugin
+		return channel != CHAN_AUTO;
 	}
-	if (attenuation == 0.0f) {
-		return true; // global sound
+	if (attenuation == 0.0f && isAmbientGeneric()) {
+		// global sound
+		// not checking loop flag due to breakree.bsp music (unlooped)
+		return true;
 	}
 
+	/*
 	int eidx = ed ? ENTINDEX(ed) : -1;
-	if (eidx > 0 && eidx <= gpGlobals->maxClients) {
+	if (eidx > 0 && eidx <= gpGlobals->maxClients && channel == CHAN_AUTO) {
 		// sound attached to a player, with a message only heard by that player
-		// maps can use this for music to keep sound balanced in both ears
+		// maps can use this for music to keep sound balanced in both ears.
+		// ambient_generic uses CHAN_AUTO in this case. Some plugins might also
+		// use that to play sounds on the player, so expect false positives.
+
+		// Don't do this though. Too many false positives (e.g. water slosh footsteps).
 		return true; 
 	}
+	*/
 
 	return false;
+}
+
+bool StartSoundMsg::isAmbientGeneric() {
+	edict_t* emitter = flags & SND_ENT ? INDEXENT(entindex) : NULL;
+	return emitter && strcmp(STRING(emitter->v.classname), "ambient_generic") == 0;
 }
 
 bool StartSoundMsg::isBuggedCyclicSound() {
@@ -517,7 +532,7 @@ void handleStartSoundMessage(edict_t* plr, NetMessage& msg, StartSoundMsg& start
 
 		if (state.isRadioMusicPlaying()) {
 			if (msgType == MSND_START)
-				ClientPrint(plr, HUD_PRINTNOTIFY, "[Radio] Muted map music: %s\n", startSnd.sample.c_str());
+				ClientPrint(plr, HUD_PRINTNOTIFY, "[Radio] Muted map audio: %s\n", startSnd.sample.c_str());
 		}
 		else {
 			msg.send(MSG_ONE, plr);
@@ -563,7 +578,7 @@ void handleCdAudioMessage(edict_t* plr, NetMessage& msg, string sound) {
 	PlayerState& state = getPlayerState(plr);
 
 	if (state.isRadioMusicPlaying()) {
-		ClientPrint(plr, HUD_PRINTNOTIFY, "[Radio] Muted map music: %s\n", sound.c_str());
+		ClientPrint(plr, HUD_PRINTNOTIFY, "[Radio] Muted map audio: %s\n", sound.c_str());
 	}
 	else {
 		msg.send(MSG_ONE, plr);

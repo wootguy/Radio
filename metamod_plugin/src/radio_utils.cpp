@@ -251,26 +251,14 @@ void setKeyValue(edict_t* ent, char* key, char* value) {
 	gpGamedllFuncs->dllapi_table->pfnKeyValue(ent, &dat);
 }
 
-void RelaySayFailsafe(EHandle h_ent) {
-	edict_t* ent = h_ent.getEdict();
-	if (!ent) {
-		return;
-	}
-
-	g_engfuncs.pfnRemoveEntity(ent);
-}
-
 // send a message the angelscript chat bridge plugin
 void RelaySay(string message) {
 	std::remove(message.begin(), message.end(), '\n'); // stip any newlines, ChatBridge.as takes care
+	replaceString(message, "\"", "'"); // replace quotes so cvar is set correctly
 
-	println(string("[RelaySay ") + Plugin_info.name + "]: " + message + "\n");
-
-	replaceString(message, "\\", "\\\\"); // escape backslashes, or the entity fucks them up
+	logln(string("[RelaySay ") + Plugin_info.name + "]: " + message + "\n");
 	
-	edict_t* ent = g_engfuncs.pfnCreateNamedEntity(MAKE_STRING("info_target"));
-	setKeyValue(ent, "$s_twlz_relay_caller", Plugin_info.name);
-	setKeyValue(ent, "$s_twlz_relay_msg", (char*)message.c_str());
-
-	g_Scheduler.SetTimeout(RelaySayFailsafe, 2.0f, EHandle(ent)); // ChatBridge.as must pick up pEntity in less than this time
+	g_engfuncs.pfnCVarSetString("relay_say_msg", message.c_str());
+	g_engfuncs.pfnServerCommand(UTIL_VarArgs("as_command .relay_say %s\n", Plugin_info.name));
+	g_engfuncs.pfnServerExecute();
 }

@@ -44,6 +44,8 @@ extern cvar_t* g_maxQueue;
 extern cvar_t* g_channelCount;
 extern cvar_t* g_serverAddr;
 
+extern cvar_t* g_relaySayMsg;
+
 extern vector<Channel> g_channels;
 
 extern volatile bool g_plugin_exiting;

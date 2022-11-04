@@ -81,6 +81,9 @@ cvar_t* g_maxQueue;
 cvar_t* g_channelCount;
 cvar_t* g_serverAddr;
 
+// hack
+cvar_t* g_relaySayMsg;
+
 enum angelscript_chat_flags {
 	ASCHAT_HANDLED, // a plugin handled the current chat message
 	ASCHAT_UNHANDLED, // chat was not handled by any angelscript plugins
@@ -134,7 +137,9 @@ void PluginInit() {
 	g_djIdleTime = RegisterCVar("radio.djIdleTime", "180", 180, 0);
 	g_maxQueue = RegisterCVar("radio.maxQueue", "8", 8, 0);
 	g_channelCount = RegisterCVar("radio.channelCount", "1", 0, 0);
-	g_serverAddr = RegisterCVar("radio.serverIp", "192.168.254.158:1337", 0, 0);
+	g_serverAddr = RegisterCVar("radio.serverIp", "127.0.0.1:1337", 0, 0);
+
+	g_relaySayMsg = RegisterCVar("relay_say_msg", "0", 0, 0);
 
 	for (int i = 0; i < (int)g_channelCount->value; i++) {
 		Channel chan;
@@ -170,11 +175,12 @@ void PluginInit() {
 
 	LoadAdminList();
 
-	if (gpGlobals->time > 3.0f)
+	if (gpGlobals->time > 3.0f) {
 		loadSoundCacheFile();
+		start_network_threads();
+	}
 
 	g_main_thread_id = std::this_thread::get_id();
-	start_network_threads();
 }
 
 void handleThreadPrints() {
@@ -218,7 +224,7 @@ void mapMusicDebug() {
 		}
 
 		PlayerState& state = getPlayerState(plr);
-		if (!state.isDebugging) {
+		if (!state.isMapMusicDebug) {
 			continue;
 		}
 
@@ -487,6 +493,8 @@ void MapInit(edict_t* pEdictList, int edictCount, int maxClients) {
 	g_Scheduler.SetTimeout(updateSleepState, 1.0f);
 	g_Scheduler.SetTimeout(loadSoundCacheFile, 1.0f);
 
+	g_Scheduler.SetTimeout(start_network_threads, 1.0f); // wait until cvar is loaded
+
 	RETURN_META(MRES_IGNORED);
 }
 
@@ -494,7 +502,7 @@ void ClientJoin(edict_t* pEntity) {
 	PlayerState& state = getPlayerState(pEntity);
 
 	state.startedReliablePackets = false;
-	state.reliablePacketsStart = 999999;
+	state.reliablePacketsStart = g_engfuncs.pfnTime() + 10*1000; // should be enough time to prevent overflow, usually
 	state.activeMapMusic.clear();
 
 	g_Scheduler.SetTimeout(updateSleepState, 1.0f);
@@ -504,11 +512,12 @@ void ClientJoin(edict_t* pEntity) {
 
 void ClientLeave(edict_t* plr) {
 	if (g_is_server_changing_levels) {
-		return;
+		RETURN_META(MRES_IGNORED);
 	}
 
 	PlayerState& state = getPlayerState(plr);
 
+	state.activeMapMusic.clear();
 	if (state.channel >= 0) {
 		if (g_channels[state.channel].currentDj == getPlayerUniqueId(plr)) {
 			g_channels[state.channel].currentDj = "";
@@ -532,11 +541,6 @@ void radioThink() {
 		}
 
 		PlayerState& state = getPlayerState(plr);
-
-		if (state.playAfterFullyLoaded) {
-			state.playAfterFullyLoaded = false;
-			state.reliablePacketsStart = g_engfuncs.pfnTime() + 10*1000;
-		}
 
 		if (state.channel >= 0 && state.showHud) {
 			g_channels[state.channel].updateHud(plr, state);
@@ -869,6 +873,7 @@ bool doCommand(edict_t* plr) {
 
 			if (args.ArgC() > 2) {
 				state.reliablePackets = atoi(args.ArgV(2).c_str()) != 0;
+				state.reliablePacketsStart = g_engfuncs.pfnTime();
 			}
 
 			ClientPrint(plr, HUD_PRINTTALK, UTIL_VarArgs("[Radio] Reliable packets %s.\n",state.reliablePackets ? "enabled" : "disabled"));
@@ -909,9 +914,9 @@ bool doCommand(edict_t* plr) {
 						mute = "(Mute: videos)";
 					}
 
-					char* tts = UTIL_VarArgs("(TTS: %s %d)", lstate.lang, lstate.pitch);
+					string tts = UTIL_VarArgs("(TTS: %s %d)", lstate.lang.c_str(), lstate.pitch);
 
-					ClientPrint(plr, HUD_PRINTCONSOLE, UTIL_VarArgs("\n%s) %s %s %s", spos.c_str(), STRING(listeners[k]->v.netname), tts, mute));
+					ClientPrint(plr, HUD_PRINTCONSOLE, UTIL_VarArgs("\n%s) %s %s %s", spos.c_str(), STRING(listeners[k]->v.netname), tts.c_str(), mute));
 				}
 
 				if (listeners.size() == 0) {
@@ -996,7 +1001,16 @@ bool doCommand(edict_t* plr) {
 				ClientPrint(plr, HUD_PRINTTALK, "[Radio] Debug mode OFF.\n");
 			}
 		}
+		else if (args.ArgC() > 1 && args.ArgV(1) == "mapmusic") {
+			state.isMapMusicDebug = !state.isMapMusicDebug;
 
+			if (state.isMapMusicDebug) {
+				ClientPrint(plr, HUD_PRINTTALK, "[Radio] Map music debug mode ON.\n");
+			}
+			else {
+				ClientPrint(plr, HUD_PRINTTALK, "[Radio] Map music debug OFF.\n");
+			}
+		}
 
 		return true;
 	}
