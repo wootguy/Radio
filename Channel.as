@@ -339,6 +339,8 @@ class Channel {
 		Song@ song = findSongById(songId);
 		
 		if (song !is null) {
+			bool wasLoaded = song.loadState == SONG_LOADED;
+		
 			song.loadState = SONG_FAILED;
 			
 			if (reason.Length() > 0) {
@@ -346,7 +348,10 @@ class Channel {
 				g_Log.PrintF("Failed to play: " + song.path + "\n");
 				announce(reason + "\n");
 				g_Log.PrintF(reason + "\n");
-			} else {				
+			} else if (wasLoaded) {
+				announce("Failed to resume. Skipping end of video.\n");
+			}
+			else {				
 				// probably a temporary error, so try to start again
 				if (!song.noRestart) {
 					Song restartSong;
