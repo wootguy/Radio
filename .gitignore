@@ -6,3 +6,4 @@ tts/
 /lib/steam_voice.pdb
 .vs/
 .vscode/
+/metamod_plugin/build_linux

@@ -41,6 +41,8 @@ our_addr = (hostname, hostport)
 
 reconnect_tcp = False
 g_pause_packets = False
+g_should_reconnect_tcp = False
+g_is_tcp_connected = False
 
 server_timeout = 5 # time in seconds to wait for server heartbeat before disconnecting
 resend_packets = 0 # send packets X extra times to help prevent lost packets while keeping latency down
@@ -325,7 +327,7 @@ def play_tts(speaker, text, id, lang, pitch, is_hidden):
 		
 	totalCaps = sum(1 for c in text if c.isupper())
 	totalLower = sum(1 for c in text if c.islower())
-	volume = 1000 if totalCaps > totalLower else 0.5
+	volume = 1000 if totalCaps > totalLower else 1
 	
 	# stop their last speech, if any
 	if speaker in g_tts_players:
@@ -344,14 +346,17 @@ def command_loop():
 	global command_queue
 	global server_timeout
 	global send_queue
+	global g_should_reconnect_tcp
+	global g_is_tcp_connected
 	
 	while True:
 		try:
+			g_is_tcp_connected = False
 			tcp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 			tcp_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 			tcp_socket.bind(our_addr)
 			tcp_socket.listen(1)
-			tcp_socket.settimeout(2)
+			tcp_socket.settimeout(10)
 			data_stream = ''
 		
 			print("Waiting for command socket connection")
@@ -361,8 +366,14 @@ def command_loop():
 			connection.settimeout(0.05)
 		
 			print("Command socket connected")
+			g_is_tcp_connected = True
 			# Receive and print data 32 bytes at a time, as long as the client is sending something
 			while True:
+				if g_should_reconnect_tcp:
+					g_should_reconnect_tcp = False
+					print("Reconnecting TCP")
+					break
+					
 				try:
 					data = connection.recv(32)
 				except Exception as e:					
@@ -384,6 +395,10 @@ def command_loop():
 						
 					continue
 				
+				if len(data) == 0:
+					print("Recv got 0 bytes. Probably client disconnected")
+					break
+				
 				data_stream += data.decode('utf-8', errors='ignore')
 				#print("Got data %s" % data.decode())
 				last_tcp_heartbeat = datetime.datetime.now()
@@ -392,7 +407,7 @@ def command_loop():
 					command = data_stream[:data_stream.find('\n')]
 					data_stream = data_stream[data_stream.find('\n')+1:]
 					command_queue.put(command)
-	 
+			connection.close()
 		except Exception as e:
 			traceback.print_exc()
 			
@@ -404,6 +419,8 @@ def transmit_voice():
 	global send_queue
 	global g_media_players
 	global g_pause_packets
+	global g_should_reconnect_tcp
+	global g_is_tcp_connected
 	
 	udp_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
 	udp_socket.bind(our_addr)
@@ -434,13 +451,13 @@ def transmit_voice():
 					break
 			continue
 
-		if g_pause_packets:
+		if g_pause_packets or not g_is_tcp_connected:
 			continue
 
-		packet = packetId.to_bytes(2, 'big')
+		packet = packetId.to_bytes(2, 'little')
 		for idx, stream in enumerate(line.split(":")):
 			numBytes = int(len(stream)/2)
-			packet += numBytes.to_bytes(2, 'big') + bytes.fromhex(stream)
+			packet += numBytes.to_bytes(2, 'little') + bytes.fromhex(stream)
 			#print("STREAM %d (%d): %s" % (idx, len(stream), stream))
 			
 		#print("Send %d (%d bytes)" % (packetId, len(packet)))
@@ -461,19 +478,22 @@ def transmit_voice():
 			if (len(sent_packets) > 128):
 				sent_packets = sent_packets[(len(sent_packets) - 128):]
 		else:
-			print("Waiting for heartbeat on %s:%d" % (hostname, hostport))
+			print("Waiting for UDP heartbeat on %s:%d" % (hostname, hostport))
 			time.sleep(1)
 		
 		# handle some requests from the server
 		for x in range(0, 4):
 			try:
 				udp_packet = udp_socket.recvfrom(1024)
+				
 				if udp_packet[0] == b'dere':
 					if not server_addr or udp_packet[1][0] != server_addr[0] or udp_packet[1][1] != server_addr[1]:
 						print("Server address changed! Must have restarted.")
+						print(udp_packet[1])
+						g_should_reconnect_tcp = True
 						server_addr = udp_packet[1]
 				else:
-					want_id = int.from_bytes(udp_packet[0], "big")
+					want_id = int.from_bytes(udp_packet[0], "little")
 					
 					found = False
 					for packet in sent_packets:

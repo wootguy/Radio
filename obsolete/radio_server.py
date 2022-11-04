@@ -187,7 +187,7 @@ def send_packets_to_plugin(socket, all_packets, force_send):
 		still_missing = 0
 		for idx, packet in enumerate(all_packets):
 			if type(packet) is int:
-				socket.sendto(packet.to_bytes(2, 'big'), client_address)
+				socket.sendto(packet.to_bytes(2, 'little'), client_address)
 				still_missing += 1
 				#print("  Asked to resend %d" % (packet))
 				
@@ -241,14 +241,14 @@ def receive_voice_data():
 		if is_resent:
 			data = data[6:]
 			
-		packetId = int.from_bytes(data[:2], "big")
+		packetId = int.from_bytes(data[:2], "little")
 		data = data[2:]
 		
 		hexString = '%04x' % packetId
 		
 		g_packet_streams = 0
 		while len(data) > 0:
-			streamSize = int.from_bytes(data[:2], "big")
+			streamSize = int.from_bytes(data[:2], "little")
 			data = data[2:]
 			hexString += ':' + ''.join(format(x, '02x') for x in data[:streamSize])
 			data = data[streamSize:]
@@ -284,7 +284,7 @@ def receive_voice_data():
 			for x in range(expectedPacketId, packetId):
 				all_packets.append(x)
 				if asked < 16: # more than this means total disconnect probably. Don't waste bandwidth
-					udp_socket.sendto(x.to_bytes(2, 'big'), client_address)
+					udp_socket.sendto(x.to_bytes(2, 'little'), client_address)
 				asked += 1
 				#print("  Asked to resend %d" % x)
 				
