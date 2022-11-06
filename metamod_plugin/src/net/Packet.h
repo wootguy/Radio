@@ -6,7 +6,9 @@
 // IP headers can be between 20 and 60 bytes.
 // UDP headers are always 8 bytes. 
 // 576 - 68 = 508
-#define MAX_PACKET_SIZE 508
+//#define MAX_PACKET_SIZE 508
+
+#define MAX_PACKET_SIZE 4096 // fragmentation is ok for this program
 
 class Packet
 {

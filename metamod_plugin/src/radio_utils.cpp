@@ -111,7 +111,7 @@ edict_t* getPlayerByUniqueId(string id) {
 	for (int i = 1; i <= gpGlobals->maxClients; i++) {
 		edict_t* ent = INDEXENT(i);
 
-		if (!ent || (ent->v.flags & FL_CLIENT) == 0) {
+		if (!isValidPlayer(ent)) {
 			continue;
 		}
 
@@ -140,7 +140,7 @@ edict_t* getPlayerByUserId(int id) {
 }
 
 bool isValidPlayer(edict_t* plr) {
-	return plr && (plr->v.flags & FL_CLIENT) != 0;
+	return plr && (plr->v.flags & FL_CLIENT) != 0 && plr->pvPrivateData;
 }
 
 void clientCommand(edict_t* plr, string cmd, int destType) {

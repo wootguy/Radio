@@ -16,6 +16,9 @@
 
 using namespace std;
 
+// dj ejected for inactivity but it was no one and never was one
+// chatsounds are muted?
+
 // TODO:
 // - show who else is listening with music sprites or smth
 // - invite cooldowns should use datetime
@@ -502,7 +505,7 @@ void ClientJoin(edict_t* pEntity) {
 	PlayerState& state = getPlayerState(pEntity);
 
 	state.startedReliablePackets = false;
-	state.reliablePacketsStart = g_engfuncs.pfnTime() + 10*1000; // should be enough time to prevent overflow, usually
+	state.reliablePacketsStart = g_engfuncs.pfnTime() + 10; // should be enough time to prevent overflow, usually
 	state.activeMapMusic.clear();
 
 	g_Scheduler.SetTimeout(updateSleepState, 1.0f);
