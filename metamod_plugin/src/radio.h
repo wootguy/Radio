@@ -43,6 +43,7 @@ extern cvar_t* g_djIdleTime;
 extern cvar_t* g_maxQueue;
 extern cvar_t* g_channelCount;
 extern cvar_t* g_serverAddr;
+extern cvar_t* g_enableMessageHooks;
 
 extern cvar_t* g_relaySayMsg;
 

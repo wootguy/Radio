@@ -89,6 +89,8 @@ void send_voice_server_message(edict_t* sender, string msg) {
 }
 
 void handle_radio_message(string msg) {
+	msg = replaceString(msg, "%", "%%");
+
 	println("[VoiceServerIn] " + msg);
 
 	if (msg.find("play:") == 0) {

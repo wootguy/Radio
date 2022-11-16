@@ -83,6 +83,7 @@ cvar_t* g_djIdleTime;
 cvar_t* g_maxQueue;
 cvar_t* g_channelCount;
 cvar_t* g_serverAddr;
+cvar_t* g_enableMessageHooks;
 
 // hack
 cvar_t* g_relaySayMsg;
@@ -107,6 +108,7 @@ uint64_t lastMapMusicDebug = 0;
 
 void ServerDeactivate() {
 	g_is_server_changing_levels = true;
+	RETURN_META(MRES_IGNORED);
 }
 
 void PluginInit() {
@@ -141,6 +143,7 @@ void PluginInit() {
 	g_maxQueue = RegisterCVar("radio.maxQueue", "8", 8, 0);
 	g_channelCount = RegisterCVar("radio.channelCount", "1", 0, 0);
 	g_serverAddr = RegisterCVar("radio.serverIp", "127.0.0.1:1337", 0, 0);
+	g_enableMessageHooks = RegisterCVar("radio.messageHooks", "1", 1, 0);
 
 	g_relaySayMsg = RegisterCVar("relay_say_msg", "0", 0, 0);
 

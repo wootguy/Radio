@@ -38,7 +38,7 @@ Packet::~Packet()
 string Packet::getString() {
 	char* outDat = new char[sz + 1];
 	memcpy(outDat, data, sz);
-	outDat[sz] = 0;
+	outDat[sz] = 0;	
 
 	string outStr = outDat;
 	delete[] outDat;

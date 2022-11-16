@@ -81,7 +81,7 @@ void MessageArg::writeToCurrentMessage() {
 		WRITE_SHORT(ival);
 		break;
 	case MARG_STRING:
-		WRITE_STRING(sval);
+		WRITE_STRING(sval.c_str());
 		break;
 	default:
 		break;
@@ -103,7 +103,7 @@ const char* MessageArg::getString() {
 	}
 }
 
-void NetMessage::send(int msg_dest, edict_t* ed) {
+void NetMessage::send(int msg_dest, edict_t* new_ed) {
 	if (msg_type == -1) {
 		println("[Radio] Can't send unintialized net message");
 		return;
@@ -111,7 +111,7 @@ void NetMessage::send(int msg_dest, edict_t* ed) {
 
 	const float* origin = hasOrigin ? pOrigin : NULL;
 
-	MESSAGE_BEGIN(msg_dest, msg_type, origin, ed);
+	MESSAGE_BEGIN(msg_dest, msg_type, origin, new_ed);
 
 	for (int i = 0; i < args.size(); i++) {
 		args[i].writeToCurrentMessage();
@@ -512,6 +512,7 @@ void handleStartSoundMessage(edict_t* plr, NetMessage& msg, StartSoundMsg& start
 	PlayerState& state = getPlayerState(plr);
 	
 	int msgType = startSnd.getMsgType();
+	int send_mode = (msg.msg_dest == MSG_ALL || msg.msg_dest == MSG_ONE) ? MSG_ONE : MSG_ONE_UNRELIABLE;
 
 	if (msgType == MSND_START || msgType == MSND_UPDATE) {
 		int oldCount = state.activeMapMusic.size();
@@ -535,7 +536,7 @@ void handleStartSoundMessage(edict_t* plr, NetMessage& msg, StartSoundMsg& start
 				ClientPrint(plr, HUD_PRINTNOTIFY, "[Radio] Muted map audio: %s\n", startSnd.sample.c_str());
 		}
 		else {
-			msg.send(MSG_ONE, plr);
+			msg.send(send_mode, plr);
 			//ClientPrint(plr, HUD_PRINTNOTIFY, "[Radio] NOT Suppressing map music (all): %s\n", startSnd.sample.c_str());
 		}
 
@@ -564,7 +565,7 @@ void handleStartSoundMessage(edict_t* plr, NetMessage& msg, StartSoundMsg& start
 			//ClientPrint(plr, HUD_PRINTTALK, UTIL_VarArgs("STOP message %.2f did not stop any music\n", gpGlobals->time));
 		}
 
-		msg.send();
+		msg.send(send_mode, plr);
 	}
 	else {
 		println("[Radio] Invalid StartSnd message type %d", msgType);
@@ -587,13 +588,11 @@ void handleCdAudioMessage(edict_t* plr, NetMessage& msg, string sound) {
 }
 
 void hookAudioMessage(NetMessage& msg) {
-	bool isMusic = false;
-
 	if (msg.msg_type == MSG_CdAudio) {
 		int idx = msg.args[0].ival;
 
 		string sound = "???";
-		if (idx >= 0 || idx < MAX_CD_AUDIO_TRACKS) {
+		if (idx >= 0 && idx < MAX_CD_AUDIO_TRACKS) {
 			sound = g_audio_tracks[idx];
 		}
 
@@ -604,6 +603,10 @@ void hookAudioMessage(NetMessage& msg) {
 		}
 		else if (msg.msg_dest == MSG_ONE) {
 			handleCdAudioMessage(msg.ed, msg, sound);
+		}
+		else {
+			println("[Radio] Unexpected CdAudio dest: %d", msg.msg_dest);
+			msg.send();
 		}
 
 		return;
@@ -644,6 +647,7 @@ void hookAudioMessage(NetMessage& msg) {
 		handleStartSoundMessage(msg.ed, msg, startSnd);
 	}
 	else {
+		msg.send();
 		println("[Radio] Unexpected StartSound dest: %d", msg.msg_dest);
 	}
 }
@@ -652,17 +656,10 @@ void hookAudioMessage(NetMessage& msg) {
 // MessageBegin calls in this plugin will bypasses the hook
 void MessageBegin(int msg_dest, int msg_type, const float* pOrigin, edict_t* ed) {
 	TextMenuMessageBeginHook(msg_dest, msg_type, pOrigin, ed);
-	/*
-	g_log_next_message = false;
-	if (msg_type == MSG_StartSound) {
-		g_suppressed_message.clear();
-		g_suppressed_message.msg_type = msg_type;
-		g_suppressed_message.pOrigin = pOrigin;
-		g_suppressed_message.msg_dest = msg_dest;
-		g_suppressed_message.ed = ed;
-		g_log_next_message = true;
+	
+	if (g_enableMessageHooks->value == 0) {
+		RETURN_META(MRES_IGNORED);
 	}
-	*/
 	
 	if (msg_type == MSG_StartSound || msg_type == MSG_CdAudio) {
 		// wait until the args are checked before sending this message.

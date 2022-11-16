@@ -41,7 +41,7 @@ struct MessageArg {
 	int argType = MARG_NONE;
 	int ival = 0;
 	float fval = 0;
-	const char* sval = "";
+	string sval = "";
 
 	MessageArg(int argType, int ival);
 	MessageArg(int argType, float ival);

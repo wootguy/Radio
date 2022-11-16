@@ -148,6 +148,9 @@ void Channel::updateHud(edict_t* plr, PlayerState& state) {
 		songStr += UTIL_VarArgs("\n+%d others", activeSongs.size() - maxLines);
 	}
 
+	// unescape percent signs
+	songStr = replaceString(songStr, "%%", "%");
+
 	HudMessage(plr, params, (msg + "\n" + songStr).c_str());
 }
 
