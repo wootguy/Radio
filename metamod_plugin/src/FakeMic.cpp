@@ -78,7 +78,7 @@ void send_debug_message(string msg) {
 }
 
 void send_voice_server_message(string msg) {
-	println("[VoiceServerOut] " + msg);
+	println("[VoiceServerOut] " + replaceString(msg, "%", "%%"));
 	g_commands_out.enqueue(msg + "\n");
 }
 
