@@ -167,7 +167,7 @@ void send_packets_to_plugin(Socket* socket, vector<RecvPacket>& all_packets, boo
 		}
 		else if (!g_admin_pause_packets) {
 			//print("Wrote %d" % len(packet));
-			for (int i = 0; i < g_channels.size() && i < packet.data.size(); i++) {
+			for (int i = 0; i < g_channelCount->value && i < packet.data.size(); i++) {
 				g_channels[i].packetStream.enqueue(packet.data[i]);
 			}
 
@@ -302,8 +302,8 @@ void voice_socket_thread(const char* addr) {
 			g_packet_streams += 1;
 		}
 
-		if (g_packet_streams - 1 < g_channels.size()) {
-			println("[Radio] Packet streams < channel count + 1 (%d %d)", g_packet_streams - 1, g_channels.size());
+		if (g_packet_streams - 1 < g_channelCount->value) {
+			println("[Radio] Packet streams < channel count + 1 (%d %d)", g_packet_streams - 1, g_channelCount->value);
 			logln("[Radio] Bad packet stream count: %d", (g_packet_streams - 1));
 			continue; // don't let packet buffer sizes get out of sync between channels
 		}

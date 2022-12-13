@@ -9,7 +9,7 @@ void callbackMenuRadio(TextMenu* menu, edict_t* plr, int itemNumber, TextMenuIte
 
 	bool canDj = true;
 	Channel* chan = NULL;
-	if (state.channel >= 0 && state.channel < g_channels.size()) {
+	if (state.channel >= 0 && state.channel < g_channelCount->value) {
 		canDj = g_channels[state.channel].canDj(plr);
 		chan = &g_channels[state.channel];
 	}
@@ -188,7 +188,7 @@ void callbackMenuChannelSelect(TextMenu* menu, edict_t* plr, int itemNumber, Tex
 void callbackMenuRequest(TextMenu* menu, edict_t* plr, int itemNumber, TextMenuItem& item) {
 	PlayerState& state = getPlayerState(plr);
 
-	if (state.channel < 0 || state.channel >= g_channels.size()) {
+	if (state.channel < 0 || state.channel >= g_channelCount->value) {
 		return;
 	}
 
@@ -239,7 +239,7 @@ void callbackMenuEditQueue(TextMenu* menu, edict_t* plr, int itemNumber, TextMen
 	PlayerState& state = getPlayerState(plr);
 	int playerid = g_engfuncs.pfnGetPlayerUserId(plr);
 
-	if (state.channel < 0 || state.channel >= g_channels.size()) {
+	if (state.channel < 0 || state.channel >= g_channelCount->value) {
 		return;
 	}
 
@@ -316,7 +316,7 @@ void callbackMenuStopVideo(TextMenu* menu, edict_t* plr, int itemNumber, TextMen
 	PlayerState& state = getPlayerState(plr);
 	int playerid = g_engfuncs.pfnGetPlayerUserId(plr);
 
-	if (state.channel < 0 || state.channel >= g_channels.size()) {
+	if (state.channel < 0 || state.channel >= g_channelCount->value) {
 		return;
 	}
 
@@ -351,7 +351,7 @@ void callbackMenuInvite(TextMenu* menu, edict_t* plr, int itemNumber, TextMenuIt
 	PlayerState& state = getPlayerState(plr);
 	int playerid = g_engfuncs.pfnGetPlayerUserId(plr);
 
-	if (state.channel < 0 || state.channel >= g_channels.size()) {
+	if (state.channel < 0 || state.channel >= g_channelCount->value) {
 		return;
 	}
 
@@ -447,7 +447,7 @@ void openMenuRadio(int playerid) {
 
 	int eidx = ENTINDEX(plr);
 	PlayerState& state = getPlayerState(plr);
-	if (state.channel < 0 || state.channel >= g_channels.size()) {
+	if (state.channel < 0 || state.channel >= g_channelCount->value) {
 		return;
 	}
 	Channel& chan = g_channels[state.channel];
@@ -498,7 +498,7 @@ void openMenuStopVideo(int playerid) {
 
 	int eidx = ENTINDEX(plr);
 	PlayerState& state = getPlayerState(plr);
-	if (state.channel < 0 || state.channel >= g_channels.size()) {
+	if (state.channel < 0 || state.channel >= g_channelCount->value) {
 		return;
 	}
 	Channel& chan = g_channels[state.channel];
@@ -528,15 +528,11 @@ void openMenuChannelSelect(int playerid) {
 
 	int eidx = ENTINDEX(plr);
 	PlayerState& state = getPlayerState(plr);
-	if (state.channel < 0 || state.channel >= g_channels.size()) {
-		return;
-	}
-	Channel& chan = g_channels[state.channel];
 
 	TextMenu& menu = initMenuForPlayer(plr, callbackMenuChannelSelect);
 	menu.SetTitle("\\yRadio Channels\n");
 
-	for (int i = 0; i < g_channels.size(); i++) {
+	for (int i = 0; i < g_channelCount->value; i++) {
 		Channel& chan = g_channels[i];
 		string label = "\\w" + chan.name;
 
@@ -555,7 +551,7 @@ void openMenuChannelSelect(int playerid) {
 
 		label += "\n\\y";
 
-		menu.AddItem(label, "channel-" + i);
+		menu.AddItem(label, string("channel-") + to_string(i));
 	}
 
 	menu.Open(0, 0, plr);
@@ -569,7 +565,7 @@ void openMenuEditQueue(int playerid, int selectedSlot) {
 
 	int eidx = ENTINDEX(plr);
 	PlayerState& state = getPlayerState(plr);
-	if (state.channel < 0 || state.channel >= g_channels.size()) {
+	if (state.channel < 0 || state.channel >= g_channelCount->value) {
 		return;
 	}
 	Channel& chan = g_channels[state.channel];
@@ -634,7 +630,7 @@ void openMenuInviteRequest(int playerid, string asker, int channel) {
 
 	int eidx = ENTINDEX(plr);
 	PlayerState& state = getPlayerState(plr);
-	if (channel < 0 || channel >= g_channels.size()) {
+	if (channel < 0 || channel >= g_channelCount->value) {
 		return;
 	}
 	Channel& chan = g_channels[channel];
@@ -688,7 +684,7 @@ void openMenuInvite(int playerid) {
 
 	int eidx = ENTINDEX(plr);
 	PlayerState& state = getPlayerState(plr);
-	if (state.channel < 0 || state.channel >= g_channels.size()) {
+	if (state.channel < 0 || state.channel >= g_channelCount->value) {
 		return;
 	}
 	Channel& chan = g_channels[state.channel];

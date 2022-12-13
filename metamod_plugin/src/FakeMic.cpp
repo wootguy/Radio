@@ -196,11 +196,11 @@ void play_samples() {
 	}
 
 	string channelPacketSizes = "";
-	int ttsChannelId = g_channels.size();
+	int ttsChannelId = g_channelCount->value;
 
 	int totalLoops = 0; // many thousands of loops = server lag
 
-	for (int c = 0; c < int(g_channels.size()) + 1; c++) {
+	for (int c = 0; c < int(g_channelCount->value) + 1; c++) {
 		VoicePacket packet;
 		int speakerEnt = g_radio_ent_idx;
 
@@ -228,7 +228,7 @@ void play_samples() {
 
 				for (int failsafe = 0; failsafe < 100 && expectedNextPacketId != packetId; failsafe++) {
 
-					for (int c = 0; c < int(g_channels.size()); c++) {
+					for (int c = 0; c < int(g_channelCount->value); c++) {
 						g_channels[c].triggerPacketEvents(expectedNextPacketId);
 					}
 

@@ -74,6 +74,8 @@ volatile bool g_admin_pause_packets = false;
 
 float g_packet_delay = 0.05f;
 
+#define MAX_CHANNELS 4
+
 cvar_t* g_inviteCooldown;
 cvar_t* g_requestCooldown;
 cvar_t* g_djSwapCooldown;
@@ -147,24 +149,15 @@ void PluginInit() {
 
 	g_relaySayMsg = RegisterCVar("relay_say_msg", "0", 0, 0);
 
-	for (int i = 0; i < (int)g_channelCount->value; i++) {
-		Channel chan;
-		g_channels.push_back(chan);
-
-		g_channels[i].name = "Channel " + (i + 1);
-		g_channels[i].id = i;
-		g_channels[i].maxStreams = 3;
-
-		if (i == 0) {
-			g_channels[i].spamMode = true;
-			g_channels[i].maxStreams = 6;
-		}
+	if (g_channelCount->value > MAX_CHANNELS) {
+		g_channelCount->value = MAX_CHANNELS;
 	}
 
-	if (g_channels.size() == 1) {
-		g_channels[0].name = "Radio";
-		g_channels[0].spamMode = false;
-		g_channels[0].maxStreams = 12;
+	g_channels.resize(MAX_CHANNELS);
+	for (int i = 0; i < MAX_CHANNELS; i++) {
+		g_channels[i].name = string("Channel ") + to_string(i + 1);
+		g_channels[i].id = i;
+		g_channels[i].maxStreams = 3;
 	}
 
 	g_Scheduler.SetInterval(radioThink, 0.5f, -1);
@@ -261,7 +254,25 @@ void mapMusicDebug() {
 	}
 }
 
+const int lastChannelCount = -1;
+
 void StartFrame() {
+	if (g_channelCount->value > MAX_CHANNELS) {
+		g_engfuncs.pfnCVarSetFloat("radio.channelCount", MAX_CHANNELS);
+	}
+
+	if (lastChannelCount != g_channelCount->value) {
+		if (g_channelCount->value == 1) {
+			g_channels[0].name = "Radio";
+			g_channels[0].spamMode = false;
+			g_channels[0].maxStreams = 12;
+		}
+		else {
+			g_channels[0].spamMode = true;
+			g_channels[0].maxStreams = 6;
+		}
+	}
+
 	g_Scheduler.Think();
 	FakeMicThink();
 
@@ -536,7 +547,7 @@ void ClientLeave(edict_t* plr) {
 }
 
 void radioThink() {
-	for (int i = 0; i < g_channels.size(); i++) {
+	for (int i = 0; i < g_channelCount->value; i++) {
 		g_channels[i].think();
 	}
 	for (int i = 1; i <= gpGlobals->maxClients; i++) {
@@ -892,7 +903,7 @@ bool doCommand(edict_t* plr) {
 			}
 			state.lastLaggyCmd = gpGlobals->time;
 
-			for (int i = 0; i < g_channels.size(); i++) {
+			for (int i = 0; i < g_channelCount->value; i++) {
 				Channel& chan = g_channels[i];
 				vector<edict_t*> listeners = chan.getChannelListeners();
 
