@@ -91,13 +91,26 @@ void TextMenu::handleMenuselectCmd(edict_t* pEntity, int selection) {
 	int playerbit = PLAYER_BIT(pEntity);
 
 	if (viewers & playerbit) {
-		if (callback && selection < numOptions && isValidPlayer(pEntity)) {
-			callback(this, pEntity, selection, options[selection]);
+		if (selection == 9) {
+			// exit menu
+		}
+		else if (isPaginated() && selection == 7) {
+			Open(lastDuration, lastPage - 1, pEntity);
+		}
+		else if (isPaginated() && selection == 8) {
+			Open(lastDuration, lastPage + 1, pEntity);
+		}
+		else if (callback && selection < numOptions && isValidPlayer(pEntity)) {
+			callback(this, pEntity, selection, options[lastPage*ITEMS_PER_PAGE + selection]);
 		}
 	}
 	else {
 		//println("%s is not viewing the '%s' menu", STRING(pEntity->v.netname), title.c_str());
 	}
+}
+
+bool TextMenu::isPaginated() {
+	return numOptions > 9;
 }
 
 void TextMenu::SetTitle(string title) {
@@ -117,16 +130,53 @@ void TextMenu::AddItem(string displayText, string optionData) {
 }
 
 void TextMenu::Open(int8_t duration, int8_t page, edict_t* player) {
+	if (!isValidPlayer(player)) {
+		return;
+	}
+
 	string menuText = title + "\n\n";
 
 	uint16_t validSlots = (1 << 9); // exit option always valid
 
-	for (int i = 0; i < numOptions; i++) {
-		menuText += to_string(i+1) + ": " + options[i].displayText + "\n";
-		validSlots |= (1 << i);
+	lastPage = page;
+	lastDuration = duration;
+	
+	int limitPerPage = isPaginated() ? ITEMS_PER_PAGE : 9;
+	int itemOffset = page * ITEMS_PER_PAGE;
+	int totalPages = (numOptions+6) / ITEMS_PER_PAGE;
+
+	int addedOptions = 0;
+	for (int i = itemOffset, k = 0; i < itemOffset+limitPerPage && i < numOptions; i++, k++) {
+		menuText += to_string(k+1) + ": " + options[i].displayText + "\n";
+		validSlots |= (1 << k);
+		addedOptions++;
 	}
 
-	menuText += "\n0: Exit";
+	while (isPaginated() && addedOptions < ITEMS_PER_PAGE) {
+		menuText += "\n";
+		addedOptions++;
+	}
+
+	menuText += "\n";
+
+	if (isPaginated()) {
+		if (page > 0) {
+			menuText += "8: Back\n";
+			validSlots |= (1 << 7);
+		}
+		else {
+			menuText += "\n";
+		}
+		if (page < totalPages - 1) {
+			menuText += "9: More\n";
+			validSlots |= (1 << 8);
+		}
+		else {
+			menuText += "\n";
+		}
+	}
+
+	menuText += "0: Exit";
 
 	if (player) {
 		MESSAGE_BEGIN(MSG_ONE, MSG_ShowMenu, NULL, player);
@@ -139,6 +189,7 @@ void TextMenu::Open(int8_t duration, int8_t page, edict_t* player) {
 		viewers |= PLAYER_BIT(player);
 	}
 	else {
+		println("WARNING: pagination is broken for menus that don't have a destination player");
 		MESSAGE_BEGIN(MSG_ALL, MSG_ShowMenu, NULL, player);
 		WRITE_SHORT(validSlots);
 		WRITE_CHAR(duration);

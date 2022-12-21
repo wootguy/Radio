@@ -2,7 +2,8 @@
 #include "meta_utils.h"
 
 #define MSG_ShowMenu 93
-#define MAX_MENU_OPTIONS 10
+#define MAX_MENU_OPTIONS 128
+#define ITEMS_PER_PAGE 7
 
 // this must be called as part of a MessageBegin hook for text menus to know when they are active
 void TextMenuMessageBeginHook(int msg_dest, int msg_type, const float* pOrigin, edict_t* ed);
@@ -46,7 +47,12 @@ private:
 	string title;
 	TextMenuItem options[MAX_MENU_OPTIONS];
 	int numOptions = 0;
+	int8_t lastPage = 0;
+	int8_t lastDuration = 0;
+
 	bool isActive = false;
+
+	bool isPaginated();
 };
 
 
