@@ -546,6 +546,12 @@ void ClientLeave(edict_t* plr) {
 	RETURN_META(MRES_IGNORED);
 }
 
+void radio_reconnect() {
+	g_plugin_exiting = true;
+	g_Scheduler.SetTimeout(stop_network_threads, 2.0f); // wait a while so main thread doesn't hang when joining threads
+	g_Scheduler.SetTimeout(start_network_threads, 3.0f);
+}
+
 void radioThink() {
 	for (int i = 0; i < g_channelCount->value; i++) {
 		g_channels[i].think();
@@ -562,6 +568,12 @@ void radioThink() {
 		if (state.channel >= 0 && state.showHud) {
 			g_channels[state.channel].updateHud(plr, state);
 		}
+	}
+
+	if (!g_plugin_exiting && TimeDifference(g_last_radio_online, getEpochMillis()) > 20.0f) {
+		println("[Radio] Restarting network threads due to connection failure");
+		logln("[Radio] Restarting network threads due to connection failure");
+		radio_reconnect();
 	}
 }
 
@@ -796,10 +808,8 @@ bool doCommand(edict_t* plr) {
 				ClientPrint(plr, HUD_PRINTTALK, "[Radio] Admins only.\n");
 				return true;
 			}
-			g_plugin_exiting = true;
+			radio_reconnect();
 			ClientPrint(plr, HUD_PRINTTALK, "[Radio] Restarting network threads.\n");
-			g_Scheduler.SetTimeout(stop_network_threads, 2.0f); // wait a while so main thread doesn't hang when joining threads
-			g_Scheduler.SetTimeout(start_network_threads, 3.0f);			
 		}
 		else if (args.ArgC() > 1 && args.ArgV(1) == "disconnect") {
 			if (!isAdmin) {

@@ -17,6 +17,7 @@ thread::id g_main_thread_id;
 thread* g_command_socket_thread;
 thread* g_voice_socket_thread;
 volatile bool g_plugin_exiting = false;
+volatile uint64_t g_last_radio_online = 0;
 
 void start_network_threads() {
 	if (g_command_socket_thread || g_voice_socket_thread) {
@@ -24,6 +25,7 @@ void start_network_threads() {
 		return;
 	}
 	g_plugin_exiting = false;
+	g_last_radio_online = getEpochMillis();
 	g_command_socket_thread = new thread(command_socket_thread, g_serverAddr->string);
 	g_voice_socket_thread = new thread(voice_socket_thread, g_serverAddr->string);
 }
@@ -79,6 +81,8 @@ bool command_socket_connect(Socket& socket) {
 void command_socket_thread(const char* addr) {
 	println("[Radio] Connect TCP to: %s", addr);
 
+	g_last_radio_online = getEpochMillis();
+
 	Socket* commandSocket = new Socket(SOCKET_TCP | SOCKET_NONBLOCKING, IPV4(addr));
 
 	command_socket_connect(*commandSocket);
@@ -91,6 +95,7 @@ void command_socket_thread(const char* addr) {
 
 	while (!g_plugin_exiting) {
 		uint64_t now = getEpochMillis();
+		g_last_radio_online = now;
 
 		if (TimeDifference(lastHeartbeat, now) > timeBetweenHeartbeats) {
 			lastHeartbeat = now;

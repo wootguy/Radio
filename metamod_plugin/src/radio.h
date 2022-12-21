@@ -50,6 +50,7 @@ extern cvar_t* g_relaySayMsg;
 extern vector<Channel> g_channels;
 
 extern volatile bool g_plugin_exiting;
+extern volatile uint64_t g_last_radio_online; // for automatic reconnecting in case server ip changes
 
 #define MAX_SERVER_ACTIVE_SONGS 16
 #define SONG_REQUEST_TIMEOUT 20
