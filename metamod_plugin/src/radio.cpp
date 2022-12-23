@@ -570,7 +570,7 @@ void radioThink() {
 		}
 	}
 
-	if (!g_plugin_exiting && TimeDifference(g_last_radio_online, getEpochMillis()) > 20.0f) {
+	if (!g_plugin_exiting && TimeDifference(g_last_radio_online, getEpochMillis()) > 20.0f && gpGlobals->time > 30) {
 		println("[Radio] Restarting network threads due to connection failure");
 		logln("[Radio] Restarting network threads due to connection failure");
 		radio_reconnect();
@@ -1103,7 +1103,8 @@ bool doCommand(edict_t* plr) {
 				send_voice_server_message(UTIL_VarArgs("%s\\%s\\%d\\%s", STRING(plr->v.netname), state.lang.c_str(), state.pitch, args.getFullCommand().c_str()));
 			}
 
-			ClientPrintAll(HUD_PRINTCONSOLE, (string("[Radio][TTS] ") + STRING(plr->v.netname) + ": " + args.getFullCommand() + "\n").c_str());
+			string printMsg = string("[Radio][TTS] ") + STRING(plr->v.netname) + ": " + args.getFullCommand() + "\n";
+			ClientPrintAll(HUD_PRINTCONSOLE, replaceString(printMsg, "%", "%%").c_str()); // prevent crash
 			return true;
 		}
 	}
