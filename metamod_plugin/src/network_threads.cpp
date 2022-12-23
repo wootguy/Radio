@@ -95,7 +95,6 @@ void command_socket_thread(const char* addr) {
 
 	while (!g_plugin_exiting) {
 		uint64_t now = getEpochMillis();
-		g_last_radio_online = now;
 
 		if (TimeDifference(lastHeartbeat, now) > timeBetweenHeartbeats) {
 			lastHeartbeat = now;
@@ -112,6 +111,7 @@ void command_socket_thread(const char* addr) {
 			}
 			else {
 				//println("Sent TCP heartbeat");
+				g_last_radio_online = now;
 			}
 		}
 
