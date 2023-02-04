@@ -1,98 +1,45 @@
 #pragma once
 #include <vector>
-#include <string>
-#include "EHandle.h"
+#include <functional>
 
-// shitty version of the angelscript scheduler
-// every type of function that can be called must have its own methods and struct
-// TODO: copy data into a buffer and pass void* as the only param
-
-struct scheduler_void_func {
-	void (*func)(void);
-	float delay;	
-	int callCount;
-	int maxCalls; // infinite if < 0
-	float lastCall;
-};
-
-struct scheduler_int_func {
-	void (*func)(int);
-	int param;
-	float delay;
-	int callCount;
-	int maxCalls; // infinite if < 0
-	float lastCall;
-};
-
-struct scheduler_ehandle_func {
-	void (*func)(EHandle);
-	EHandle param;
-	float delay;
-	int callCount;
-	int maxCalls; // infinite if < 0
-	float lastCall;
-};
-
-struct scheduler_int_int_func {
-	void (*func)(int, int);
-	int param1;
-	int param2;
-	float delay;
-	int callCount;
-	int maxCalls; // infinite if < 0
-	float lastCall;
-};
-
-struct scheduler_int_str_int_func {
-	void (*func)(int, std::string, int);
-	int param1;
-	std::string param2;
-	int param3;
-	float delay;
-	int callCount;
-	int maxCalls; // infinite if < 0
-	float lastCall;
-};
-
-struct scheduler_str_bool_func {
-	void (*func)(std::string, bool);
-	std::string param1;
-	bool param2;
-	float delay;
-	int callCount;
-	int maxCalls; // infinite if < 0
-	float lastCall;
+struct ScheduledFunction {
+    std::function<void()> func;
+    float delay;
+    int callCount;
+    int maxCalls; // infinite if < 0
+    float lastCall;
 };
 
 class Scheduler {
 public:
-	Scheduler();
+    Scheduler() {}
 
-	void SetTimeout(void (*void_func) (void), float delay);
-	void SetInterval(void (*void_func) (void), float delay, int maxCalls);
+    template <typename F, typename... Args>
+    void SetTimeout(F&& func, float delay, Args&&... args) {
+        ScheduledFunction f = {
+            std::bind(std::forward<F>(func), std::forward<Args>(args)...),
+            delay,
+            0,
+            1,
+            g_engfuncs.pfnTime()
+        };
+        functions.push_back(f);
+    }
 
-	void SetTimeout(void (*int_func) (int), float delay, int param);
-	void SetInterval(void (*int_func) (int), float delay, int maxCalls, int param);
+    template <typename F, typename... Args>
+    void SetInterval(F&& func, float delay, int maxCalls, Args&&... args) {
+        ScheduledFunction f = {
+            std::bind(std::forward<F>(func), std::forward<Args>(args)...),
+            delay,
+            0,
+            maxCalls,
+            g_engfuncs.pfnTime(),
+        };
+        functions.push_back(f);
+    }
 
-	void SetTimeout(void (*ehandle_func) (EHandle), float delay, EHandle param);
-	void SetInterval(void (*ehandle_func) (EHandle), float delay, int maxCalls, EHandle param);
-
-	void SetTimeout(void (*int_int_func) (int, int), float delay, int param1, int param2);
-	void SetInterval(void (*int_int_func) (int, int), float delay, int maxCalls, int param1, int param2);
-
-	void SetTimeout(void (*str_bool_func) (std::string, bool), float delay, std::string param1, bool param2);
-	void SetInterval(void (*str_bool_func) (std::string, bool), float delay, int maxCalls, std::string param1, bool param2);
-
-	void SetTimeout(void (*int_str_int_func) (int, std::string, int), float delay, int param1, std::string param2, int param3);
-	void SetInterval(void (*int_str_int_func) (int, std::string, int), float delay, int maxCalls, int param1, std::string param2, int param3);
-
-	void Think();
+    void Think();
 
 private:
-	std::vector<scheduler_void_func> void_func_schedules;
-	std::vector<scheduler_int_func> int_func_schedules;
-	std::vector<scheduler_ehandle_func> ehandle_func_schedules;
-	std::vector<scheduler_int_int_func> int_int_func_schedules;
-	std::vector<scheduler_int_str_int_func> int_str_int_func_schedules;
-	std::vector<scheduler_str_bool_func> str_bool_func_schedules;
+    std::vector<ScheduledFunction> functions;
 };
