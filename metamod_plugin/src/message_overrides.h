@@ -45,7 +45,7 @@ struct MessageArg {
 
 	MessageArg(int argType, int ival);
 	MessageArg(int argType, float ival);
-	MessageArg(int argType, const char* sval);
+	MessageArg(int argType, string sval);
 	void writeToCurrentMessage();
 	const char* getString();
 };

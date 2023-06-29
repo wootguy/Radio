@@ -50,7 +50,7 @@ MessageArg::MessageArg(int argType, float fval) {
 	this->fval = fval;
 }
 
-MessageArg::MessageArg(int argType, const char* sval) {
+MessageArg::MessageArg(int argType, string sval) {
 	this->argType = argType;
 	this->sval = sval;
 }
@@ -97,7 +97,7 @@ const char* MessageArg::getString() {
 	case MARG_ENT:    return UTIL_VarArgs("ENTITY : %d", ival);
 	case MARG_LONG:   return UTIL_VarArgs("LONG   : %d", ival);
 	case MARG_SHORT:  return UTIL_VarArgs("SHORT  : %d", ival);
-	case MARG_STRING: return UTIL_VarArgs("STRING: %s", sval);
+	case MARG_STRING: return UTIL_VarArgs("STRING: %s", sval.c_str());
 	default:
 		return "NONE";
 	}
@@ -676,8 +676,22 @@ void MessageBegin(int msg_dest, int msg_type, const float* pOrigin, edict_t* ed)
 		}
 		g_suppressed_message.msg_dest = msg_dest;
 		g_suppressed_message.ed = ed;
+		//g_log_next_message = true;
 		RETURN_META(MRES_SUPERCEDE);
 	}
+	else {
+		g_log_next_message = false;
+	}
+	/*
+	else {
+		// learn about some message with this code
+		g_suppressed_message.clear();
+		g_suppressed_message.msg_type = msg_type;
+		g_suppressed_message.msg_dest = msg_dest;
+		g_suppressed_message.ed = ed;
+		g_log_next_message = true;
+	}
+	*/
 
 	RETURN_META(MRES_IGNORED);
 }
