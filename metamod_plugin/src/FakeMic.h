@@ -1,5 +1,8 @@
 #pragma once
 #include "meta_utils.h"
+#include "ThreadSafeQueue.h"
+
+using namespace std;
 
 struct VoicePacket {
 	uint16 id;

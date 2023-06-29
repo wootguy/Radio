@@ -17,7 +17,7 @@ void loadChannelListeners();
 void updateSleepState();
 bool doCommand(edict_t* plr);
 void showConsoleHelp(edict_t* plr, bool showChatMessage);
-void loadSoundCacheFile();
+void loadSoundCacheFileRadio();
 
 void send_voice_server_message(string msg);
 

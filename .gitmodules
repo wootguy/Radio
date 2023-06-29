@@ -1,0 +1,3 @@
+[submodule "metamod_plugin/mmlib"]
+	path = metamod_plugin/mmlib
+	url = https://github.com/wootguy/mmlib

@@ -1,27 +1,7 @@
 #pragma once
 #include "meta_utils.h"
 
-#define MSG_CdAudio 80
-#define MSG_StartSound 107
-
-#define SND_VOLUME 1
-#define SND_PITCH 2
-#define SND_ATTENUATION 4
-#define SND_ORIGIN 8
-#define SND_ENT 16
-#define SND_STOP 32
-#define SND_CHANGE_VOL 64
-#define SND_CHANGE_PITCH 128
-#define SND_SENTENCE 256
-#define SND_REFRESH 512
-#define SND_FORCE_SINGLE 1024
-#define SND_FORCE_LOOP 2048
-#define SND_LINEAR 4096
-#define SND_SKIP_ORIGIN_USE_ENT 8192
-#define SND_IDK 16384 // this is set by ambient_music but idk what it does
-#define SND_OFFSET 32768
-
-#define CHAN_MUSIC 7
+using namespace std;
 
 #define FL_UNLOOPED_CYCLIC 32
 
@@ -71,7 +51,7 @@ enum sound_msg_type {
 	MSND_UPDATE // update a currently playing sound (does not start a stopped sound)
 };
 
-struct StartSoundMsg {
+struct StartSoundMsgRadio {
 	string sample = "";
 	int soundIdx;
 	int channel = 0;
@@ -87,9 +67,9 @@ struct StartSoundMsg {
 	int msg_dest;
 	edict_t* ed;
 
-	StartSoundMsg() {}
-	StartSoundMsg(const StartSoundMsg& other);
-	StartSoundMsg(const NetMessage& msg);
+	StartSoundMsgRadio() {}
+	StartSoundMsgRadio(const StartSoundMsgRadio& other);
+	StartSoundMsgRadio(const NetMessage& msg);
 	void print();
 	void simplePrint();
 	bool isMusic();
@@ -102,7 +82,7 @@ struct StartSoundMsg {
 
 struct LoopingSound {
 	NetMessage msg;
-	StartSoundMsg info;
+	StartSoundMsgRadio info;
 	uint64_t sendTime;
 	bool isPlaying = true;
 
@@ -111,7 +91,7 @@ struct LoopingSound {
 	void resume(edict_t* target);
 
 	// returns true if this sound would be stopped/replaced by the given sound message 
-	bool wouldBeStoppedBy(StartSoundMsg& msg);
+	bool wouldBeStoppedBy(StartSoundMsgRadio& msg);
 };
 
 void MessageBegin(int msg_dest, int msg_type, const float* pOrigin, edict_t* ed);

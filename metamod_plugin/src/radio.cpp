@@ -1,9 +1,8 @@
 #include "radio.h"
+#include "mmlib.h"
 #include <string>
 #include "enginecallback.h"
 #include "eiface.h"
-#include "radio_utils.h"
-#include "TextMenu.h"
 #include <algorithm>
 #include "Channel.h"
 #include "menus.h"
@@ -175,37 +174,17 @@ void PluginInit() {
 	LoadAdminList();
 
 	if (gpGlobals->time > 3.0f) {
-		loadSoundCacheFile();
+		loadSoundCacheFileRadio();
 		start_network_threads();
 	}
-
-	g_main_thread_id = std::this_thread::get_id();
 }
 
-void handleThreadPrints() {
+void handleThreadCommands() {
 	string msg;
-	for (int failsafe = 0; failsafe < 10; failsafe++) {
-		if (g_thread_prints.dequeue(msg)) {
-			println(msg.c_str());
-		}
-		else {
-			break;
-		}
-	}
-
-	for (int failsafe = 0; failsafe < 10; failsafe++) {
-		if (g_thread_logs.dequeue(msg)) {
-			logln(msg.c_str());
-		}
-		else {
-			break;
-		}
-	}
 
 	if (g_commands_in.dequeue(msg)) {
 		handle_radio_message(msg);
 	}
-	
 }
 
 void mapMusicDebug() {
@@ -277,6 +256,7 @@ void StartFrame() {
 	FakeMicThink();
 
 	handleThreadPrints();
+	handleThreadCommands();
 
 	mapMusicDebug();
 
@@ -437,7 +417,7 @@ enum parse_modes {
 	PARSE_SENTENCES
 };
 
-void loadSoundCacheFile() {
+void loadSoundCacheFileRadio() {
 	g_sound_indexes.clear();
 	g_sentence_indexes.clear();
 
@@ -508,7 +488,7 @@ void MapInit(edict_t* pEdictList, int edictCount, int maxClients) {
 
 	// fix for listen server with 1 player
 	g_Scheduler.SetTimeout(updateSleepState, 1.0f);
-	g_Scheduler.SetTimeout(loadSoundCacheFile, 1.0f);
+	g_Scheduler.SetTimeout(loadSoundCacheFileRadio, 1.0f);
 
 	g_Scheduler.SetTimeout(start_network_threads, 1.0f); // wait until cvar is loaded
 

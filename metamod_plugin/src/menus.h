@@ -1,5 +1,7 @@
 #include "TextMenu.h"
 
+using namespace std;
+
 void callbackMenuRadio(TextMenu* menu, edict_t* player, int itemNumber, TextMenuItem& item);
 void joinRadioChannel(edict_t* plr, int newChannel);
 void callbackMenuChannelSelect(TextMenu* menu, edict_t* player, int itemNumber, TextMenuItem& item);

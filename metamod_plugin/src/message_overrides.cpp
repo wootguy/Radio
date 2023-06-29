@@ -1,6 +1,7 @@
 #include "message_overrides.h"
 #include "TextMenu.h"
-#include "radio_utils.h"
+#include "mmlib.h"
+#include "radio.h"
 
 bool g_suppress_current_message = false;
 bool g_log_next_message = false;
@@ -181,7 +182,7 @@ void NetMessage::print() {
 	println("END");
 }
 
-StartSoundMsg::StartSoundMsg(const StartSoundMsg& other) {
+StartSoundMsgRadio::StartSoundMsgRadio(const StartSoundMsgRadio& other) {
 	this->sample = other.sample;
 	this->soundIdx = other.soundIdx;
 	this->channel = other.channel;
@@ -198,7 +199,7 @@ StartSoundMsg::StartSoundMsg(const StartSoundMsg& other) {
 	this->ed = other.ed;
 }
 
-StartSoundMsg::StartSoundMsg(const NetMessage& msg) {
+StartSoundMsgRadio::StartSoundMsgRadio(const NetMessage& msg) {
 	flags = msg.args[0].ival;
 	int argIdx = 1;
 
@@ -238,7 +239,7 @@ StartSoundMsg::StartSoundMsg(const NetMessage& msg) {
 	ed = msg.ed;
 }
 
-void StartSoundMsg::send(edict_t* target) {
+void StartSoundMsgRadio::send(edict_t* target) {
 	MESSAGE_BEGIN(MSG_ONE, MSG_StartSound, NULL, target);
 	WRITE_SHORT(flags);
 
@@ -303,7 +304,7 @@ const char* getChannelName(int channel) {
 	return schan;
 }
 
-void StartSoundMsg::print() {
+void StartSoundMsgRadio::print() {
 	string flagString;
 
 	println("BEGIN StartSound message (%s):", msgDestStr(msg_dest));
@@ -354,7 +355,7 @@ void StartSoundMsg::print() {
 	println("END");
 }
 
-char* StartSoundMsg::getDesc() {
+char* StartSoundMsgRadio::getDesc() {
 	static char buff[256];
 
 	string name = sample;
@@ -369,7 +370,7 @@ char* StartSoundMsg::getDesc() {
 	return buff;
 }
 
-void StartSoundMsg::simplePrint() {
+void StartSoundMsgRadio::simplePrint() {
 	int msgType = getMsgType();
 
 	if (msgType == MSND_STOP) {
@@ -383,7 +384,7 @@ void StartSoundMsg::simplePrint() {
 	}
 }
 
-bool StartSoundMsg::isMusic() {
+bool StartSoundMsgRadio::isMusic() {
 	if (flags & SND_IDK) { // ambient_music
 		return true;
 	}
@@ -419,12 +420,12 @@ bool StartSoundMsg::isMusic() {
 	return false;
 }
 
-bool StartSoundMsg::isAmbientGeneric() {
+bool StartSoundMsgRadio::isAmbientGeneric() {
 	edict_t* emitter = flags & SND_ENT ? INDEXENT(entindex) : NULL;
 	return emitter && strcmp(STRING(emitter->v.classname), "ambient_generic") == 0;
 }
 
-bool StartSoundMsg::isBuggedCyclicSound() {
+bool StartSoundMsgRadio::isBuggedCyclicSound() {
 	edict_t* emitter = flags & SND_ENT ? INDEXENT(entindex) : NULL;
 
 	return emitter
@@ -432,7 +433,7 @@ bool StartSoundMsg::isBuggedCyclicSound() {
 		&& strcmp(STRING(emitter->v.classname), "ambient_generic") == 0;
 }
 
-int StartSoundMsg::getMsgType() {
+int StartSoundMsgRadio::getMsgType() {
 	if (flags & SND_STOP) {
 		return MSND_STOP;
 	}
@@ -444,14 +445,14 @@ int StartSoundMsg::getMsgType() {
 
 LoopingSound::LoopingSound(const NetMessage& msg) {
 	this->msg = msg;
-	this->info = StartSoundMsg(msg);
+	this->info = StartSoundMsgRadio(msg);
 	sendTime = getEpochMillis();
 }
 
 void LoopingSound::pause(edict_t* target) {
 	//ClientPrint(target, HUD_PRINTNOTIFY, "[Radio] Paused map music: %s\n", info.sample.c_str());
 
-	StartSoundMsg pauseSnd = StartSoundMsg(info);
+	StartSoundMsgRadio pauseSnd = StartSoundMsgRadio(info);
 	pauseSnd.flags = info.flags | SND_VOLUME | SND_CHANGE_VOL | SND_REFRESH;
 	pauseSnd.volume = 0.0f; // only change the volume so that it doesn't need to restart on resume
 
@@ -484,7 +485,7 @@ void LoopingSound::resume(edict_t* target) {
 
 	//ClientPrint(target, HUD_PRINTNOTIFY, "[Radio] Resumed map music: %s\n", info.sample.c_str());
 
-	StartSoundMsg resumeSnd = StartSoundMsg(info);
+	StartSoundMsgRadio resumeSnd = StartSoundMsgRadio(info);
 	resumeSnd.flags = info.flags | SND_VOLUME | SND_CHANGE_VOL | SND_REFRESH;
 
 	if ((info.flags & SND_FORCE_LOOP) == 0) {
@@ -500,11 +501,11 @@ void LoopingSound::resume(edict_t* target) {
 	isPlaying = true;
 }
 
-bool LoopingSound::wouldBeStoppedBy(StartSoundMsg& msg) {
+bool LoopingSound::wouldBeStoppedBy(StartSoundMsgRadio& msg) {
 	return info.channel == msg.channel && info.entindex == msg.entindex && info.sample == msg.sample;
 }
 
-void handleStartSoundMessage(edict_t* plr, NetMessage& msg, StartSoundMsg& startSnd) {
+void handleStartSoundMessage(edict_t* plr, NetMessage& msg, StartSoundMsgRadio& startSnd) {
 	if (!isValidPlayer(plr)) {
 		return;
 	}
@@ -617,7 +618,7 @@ void hookAudioMessage(NetMessage& msg) {
 		return;
 	}
 
-	StartSoundMsg startSnd = StartSoundMsg(msg);
+	StartSoundMsgRadio startSnd = StartSoundMsgRadio(msg);
 
 	if (!startSnd.isMusic()) {
 		msg.send();

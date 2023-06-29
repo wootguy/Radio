@@ -1,18 +1,19 @@
 #include "network_threads.h"
 #include "Socket.h"
 #include "Channel.h"
+#include "mmlib.h"
+#include "radio.h"
+
+#undef read
 #include "mstream.h"
 
 const int buffer_max = 4;
 const int buffered_buffers = 1;
 const int g_packet_streams = 1;
 
-ThreadSafeQueue<string> g_thread_prints;
-ThreadSafeQueue<string> g_thread_logs;
 ThreadSafeQueue<string> g_packet_input;
 ThreadSafeQueue<string> g_commands_out;
 ThreadSafeQueue<string> g_commands_in;
-thread::id g_main_thread_id;
 
 thread* g_command_socket_thread;
 thread* g_voice_socket_thread;
