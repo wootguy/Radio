@@ -40,8 +40,6 @@ include_directories(src/net)
 add_library(${PROJECT_NAME} SHARED)
 add_subdirectory(mmlib)
 
-add_definitions(-DMULTITHREADED_PLUGIN)
-
 set_target_properties(${PROJECT_NAME} PROPERTIES
                       RUNTIME_OUTPUT_DIRECTORY_DEBUG "${SVEN_ROOT_PATH}/${DLL_INSTALL_PATH}"
                       RUNTIME_OUTPUT_DIRECTORY_RELEASE "${SVEN_ROOT_PATH}/${DLL_INSTALL_PATH}")
