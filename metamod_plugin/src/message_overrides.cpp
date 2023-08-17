@@ -1,6 +1,7 @@
 #include "message_overrides.h"
 #include "TextMenu.h"
 #include "radio_utils.h"
+#include <set>
 
 bool g_suppress_current_message = false;
 bool g_log_next_message = false;
@@ -587,6 +588,45 @@ void handleCdAudioMessage(edict_t* plr, NetMessage& msg, string sound) {
 	}
 }
 
+// this should not be in this plugin. It is now because the sound message would be sent
+// by this plugin even if another one wanted to block the sound messages (no such thing as HOOK_HANDLED)
+bool isSnarkAbuse(StartSoundMsg& startSnd) {
+	static set<string> snarkSounds = { 
+		"squeek/sqk_hunt2.wav",
+		"squeek/sqk_hunt3.wav",
+		"common/null.wav",
+		"cl2/squeek/sqk_deploy1.wav",
+		"wanted/scorpion/scorp_hunt2.wav",
+		"wanted/scorpion/scorp_hunt3.wav"
+	};
+	static uint64_t lastSnarkSound[33] = { 0 };
+
+	uint64_t now = getEpochMillis();
+
+	if (snarkSounds.find(startSnd.sample) != snarkSounds.end()) {
+		Vector soundOri = Vector(startSnd.x, startSnd.y, startSnd.z);
+
+		for (int i = 1; i <= gpGlobals->maxClients; i++) {
+			edict_t* plr = INDEXENT(i);
+
+			if (!isValidPlayer(plr)) {
+				continue;
+			}
+
+			if ((soundOri - plr->v.origin).Length() < 1.0f) {
+				if (TimeDifference(lastSnarkSound[i], now) < 0.01f) {
+					return true;
+				}
+
+				lastSnarkSound[i] = now;
+			}
+		}
+	}
+
+	//println("PLAY %s", startSnd.sample.c_str());
+	return false;
+}
+
 void hookAudioMessage(NetMessage& msg) {
 	if (msg.msg_type == MSG_CdAudio) {
 		int idx = msg.args[0].ival;
@@ -618,6 +658,11 @@ void hookAudioMessage(NetMessage& msg) {
 	}
 
 	StartSoundMsg startSnd = StartSoundMsg(msg);
+
+	if (isSnarkAbuse(startSnd)) {
+		return;
+	}
+	
 
 	if (!startSnd.isMusic()) {
 		msg.send();

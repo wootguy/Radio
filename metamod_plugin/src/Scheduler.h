@@ -1,4 +1,5 @@
 #pragma once
+#include "meta_init.h"
 #include <vector>
 #include <functional>
 
