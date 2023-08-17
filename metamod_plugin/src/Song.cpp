@@ -1,5 +1,5 @@
-#include "mmlib.h"
 #include "Song.h"
+#include "mmlib.h"
 
 string Song::getClippedName(int length, bool ascii) {
 	string name = getName(ascii);

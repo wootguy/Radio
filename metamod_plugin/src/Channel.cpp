@@ -240,7 +240,7 @@ string Channel::getQueueCountString() {
 }
 
 edict_t* Channel::getDj() {
-	return hasDj() ? getPlayerByUniqueId(currentDj) : NULL;
+	return getPlayerByUniqueId(currentDj);
 }
 
 bool Channel::hasDj() {
