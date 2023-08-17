@@ -1,5 +1,5 @@
 #pragma once
-#include <stdint.h>
+#include "radio_utils.h"
 
 class mstream
 {

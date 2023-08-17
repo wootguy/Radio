@@ -1,6 +1,5 @@
 #include "Socket.h"
 #include <ws2tcpip.h>
-#include "mmlib.h"
 
 addrinfo tcphints = 
 {

@@ -46,6 +46,3 @@ struct PlayerState {
 	bool shouldCooldownGeneric(edict_t* plr, float lastActionTime, int cooldownTime, string actionDesc);
 	bool isRadioMusicPlaying();
 };
-
-// return existing state or create a new one
-PlayerState& getPlayerState(edict_t* plr);

@@ -10,10 +10,17 @@ set(SOURCE_FILES
 	src/Channel.h src/Channel.cpp
 	src/menus.h src/menus.cpp
 	src/FakeMic.h src/FakeMic.cpp
+	src/radio_utils.h src/radio_utils.cpp
+	src/meta_utils.h src/meta_utils.cpp
+	src/meta_init.h src/meta_init.cpp
+	src/Scheduler.h src/Scheduler.cpp
+	src/TextMenu.h src/TextMenu.cpp
 	src/PlayerState.h src/PlayerState.cpp
 	src/Song.h src/Song.cpp
+	src/EHandle.h src/EHandle.cpp
 	src/network_threads.h src/network_threads.cpp
 	src/message_overrides.h src/message_overrides.cpp
+	src/ThreadSafeQueue.h src/ThreadSafeQueue.cpp
 	src/mstream.h src/mstream.cpp
 	src/net/Packet.h src/net/Packet.cpp
 	src/net/IPV4.h src/net/IPV4.cpp
@@ -35,22 +42,21 @@ else()
 	)
 endif()
 
+include_directories(src)
 include_directories(src/net)
+include_directories(include/metamod)
+include_directories(include/hlsdk/common)
+include_directories(include/hlsdk/dlls)
+include_directories(include/hlsdk/engine)
+include_directories(include/hlsdk/pm_shared)
 
-add_library(${PROJECT_NAME} SHARED)
-add_subdirectory(mmlib)
-
-add_definitions(-DMULTITHREADED_PLUGIN)
+add_library(${PROJECT_NAME} SHARED ${SOURCE_FILES})
 
 set_target_properties(${PROJECT_NAME} PROPERTIES
                       RUNTIME_OUTPUT_DIRECTORY_DEBUG "${SVEN_ROOT_PATH}/${DLL_INSTALL_PATH}"
                       RUNTIME_OUTPUT_DIRECTORY_RELEASE "${SVEN_ROOT_PATH}/${DLL_INSTALL_PATH}")
 				
-if(MSVC)
-	source_group("Header Files\\sven" FILES ${SVEN_API_HEADERS})
-	source_group("Header Files\\mmlib" FILES ${META_HELPER_HEADERS})
-	source_group("Source Files\\mmlib" FILES ${META_HELPER_SOURCES})
-	
+if(MSVC)											
 	set_target_properties(${PROJECT_NAME} PROPERTIES
 					  VS_STARTUP_PROJECT ${PROJECT_NAME}
 					  VS_DEBUGGER_COMMAND "svencoop.exe"

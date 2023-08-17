@@ -1,20 +1,6 @@
 #include "Channel.h"
 #include "radio.h"
 #include "menus.h"
-#include "misc_utils.h"
-
-string formatTime(int totalSeconds) {
-	int hours = totalSeconds / (60 * 60);
-	int minutes = (totalSeconds / 60) - hours * 60;
-	int seconds = totalSeconds % 60;
-
-	if (hours > 0) {
-		return UTIL_VarArgs("%d:%02d:%02d", hours, minutes, seconds);
-	}
-	else {
-		return UTIL_VarArgs("%d:%02d", minutes, seconds);
-	}
-}
 
 void Channel::think() {
 	for (int i = 0; i < activeSongs.size(); i++) {

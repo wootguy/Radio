@@ -1,9 +1,9 @@
 #include "FakeMic.h"
 #include "radio.h"
+#include "radio_utils.h"
 #include "Channel.h"
 #include <errno.h>
 #include "network_threads.h"
-#include "mmlib.h"
 
 uint32_t ideal_buffer_size = 8; // amount of packets to delay playback of. Higher = more latency + bad connection tolerance
 

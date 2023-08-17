@@ -1,7 +1,7 @@
 #include "PlayerState.h"
+#include "radio_utils.h"
 #include "radio.h"
 #include "Channel.h"
-#include "mmlib.h"
 
 bool PlayerState::shouldInviteCooldown(edict_t* plr, string id) {
 	float inviteTime = -9999;
@@ -47,15 +47,4 @@ bool PlayerState::shouldCooldownGeneric(edict_t* plr, float lastActionTime, int 
 
 bool PlayerState::isRadioMusicPlaying() {
 	return channel >= 0 && g_channels[channel].activeSongs.size() > 0;
-}
-
-PlayerState& getPlayerState(edict_t* plr) {
-	string steamId = getPlayerUniqueId(plr);
-
-	if (g_player_states.find(steamId) == g_player_states.end()) {
-		PlayerState* newState = new PlayerState();
-		g_player_states[steamId] = newState;
-	}
-
-	return *g_player_states[steamId];
 }
